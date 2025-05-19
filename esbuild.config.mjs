@@ -8,7 +8,6 @@
 import esbuild from "esbuild";
 import process from "process";
 import builtins from "builtin-modules";
-import copyStaticFiles from "esbuild-copy-static-files";
 import fs from "fs";
 
 const banner = `/*
@@ -24,8 +23,10 @@ const manifest = JSON.parse(fs.readFileSync("./manifest.json", "utf-8"));
 const pluginId = manifest.id;
 
 // 路径模板
-const devPluginPath = `./test_vault/.obsidian/plugins/${pluginId}`;
-const buildPluginPath = `/Users/wang/Library/Mobile Documents/iCloud~md~obsidian/Documents/Base/.obsidian/plugins/${pluginId}`;
+// const devPluginPath = `./test_vault/.obsidian/plugins/${pluginId}`;
+const devPluginPath = `/Volumes/file/00_视频工作/04_直播文件/.obsidian/plugins/${pluginId}`;
+const buildPluginPath = `/Volumes/file/00_视频工作/04_直播文件/.obsidian/plugins/${pluginId}`;
+// const buildPluginPath = `/Users/wang/Library/Mobile Documents/iCloud~md~obsidian/Documents/Base/.obsidian/plugins/${pluginId}`;
 
 // esbuild 配置
 esbuild
@@ -57,22 +58,13 @@ esbuild
 		logLevel: "info",
 		sourcemap: prod ? false : "inline",
 		treeShaking: true,
-		outdir: "./dist",
-		plugins: [
-			copyStaticFiles({
-				src: "./manifest.json",
-				dest: prod
-					? `${buildPluginPath}/manifest.json`
-					: `${devPluginPath}/manifest.json`,
-			}),
-			copyStaticFiles({
-				src: "./dist/main.js",
-				dest: prod
-					? `${buildPluginPath}/manifest.json`
-					: `${devPluginPath}/manifest.json`,
-				filter: () => !prod,
-				force: true,
-			}),
-		],
+		outdir: prod ? buildPluginPath : devPluginPath,
+	})
+	.then(() => {
+		// 复制 manifest.json
+		fs.copyFileSync(
+			"./manifest.json",
+			(prod ? buildPluginPath : devPluginPath) + "/manifest.json"
+		);
 	})
 	.catch(() => process.exit(1));

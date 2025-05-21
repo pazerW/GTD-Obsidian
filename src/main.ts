@@ -28,7 +28,9 @@ export default class GTDPlugin extends Plugin {
 		const ribbonIconEl = this.addRibbonIcon('ship-wheel', '同步今日任务', (evt: MouseEvent) => {
 			this.handleRibbonClick();
 		});
+
 		this.registerObsidianProtocolHandler("obsidian_gtd_sync_task", async (e) => {
+			new Notice('开始同步任务');
 			console.log('Received protocol date :', e.date);
 			if (!e || !e.date || !/^\d{4}-\d{2}-\d{2}$/.test(e.date)) {
 				console.error('Invalid date format or missing data');
@@ -213,7 +215,6 @@ export default class GTDPlugin extends Plugin {
 			lines.push(...yesterdayLines);
 		}
 		if (ongoingLines.length > 0) {
-			lines.push(`\n## 今日任务 - ${ongoingLines.length} 个\n`);
 			// 去重：如果 yesterdayLines 中的任务（按开头内容）和 ongoingLines 有重复，则 ongoingLines 只保留不重复的
 			const yesterdayTaskSet = new Set(
 				yesterdayLines.map(line => line.replace(/\(omnifocus:\/\/\/task\/[^\)]*\).*/, '').trim())
@@ -222,6 +223,7 @@ export default class GTDPlugin extends Plugin {
 				const key = line.replace(/\(omnifocus:\/\/\/task\/[^\)]*\).*/, '').trim();
 				return !yesterdayTaskSet.has(key);
 			});
+			lines.push(`\n## 今日任务 - ${filteredOngoingLines.length} 个\n`);
 			lines.push(...filteredOngoingLines);
 		}
 		if (completedLines.length > 0) {
@@ -268,68 +270,74 @@ export default class GTDPlugin extends Plugin {
 				? `${date.replace(/\//g, '-').replace(/-/g, '-').replace(/^\s+|\s+$/g, '')}.md`
 				: '';
 			const dateFilePath = this.settings.savePath + '/' + dateFileName;
-			const data = await this.app.vault.adapter.read(dateFilePath);
-			switch (type) {
-				case 'completed': {
-					let completedTasks;
-					if (!dataFormatter) {
-						completedTasks = await this.getTasksFromMarkdown(data.split('\n').filter(line => line.startsWith('- [x]')));
-					} else {
-						completedTasks = data.split('\n').filter(line => line.startsWith('- [x]'));
+			try {
+				const data = await this.app.vault.adapter.read(dateFilePath);
+				switch (type) {
+					case 'completed': {
+						let completedTasks;
+						if (!dataFormatter) {
+							completedTasks = await this.getTasksFromMarkdown(data.split('\n').filter(line => line.startsWith('- [x]')));
+						} else {
+							completedTasks = data.split('\n').filter(line => line.startsWith('- [x]'));
+						}
+						res.writeHead(200, { 'Content-Type': 'application/json' });
+						res.end(JSON.stringify({ ok: true, data: completedTasks }));
+						break;
 					}
-					res.writeHead(200, { 'Content-Type': 'application/json' });
-					res.end(JSON.stringify({ ok: true, data: completedTasks }));
-					break;
-				}
-				case 'ongoing': {
-					let ongoingTasks;
-					if (!dataFormatter) {
-						ongoingTasks = await this.getTasksFromMarkdown(data.split('\n').filter(line => line.startsWith('- [ ]')));
-					} else {
-						ongoingTasks = data.split('\n').filter(line => line.startsWith('- [ ]'));
+					case 'ongoing': {
+						let ongoingTasks;
+						if (!dataFormatter) {
+							ongoingTasks = await this.getTasksFromMarkdown(data.split('\n').filter(line => line.startsWith('- [ ]')));
+						} else {
+							ongoingTasks = data.split('\n').filter(line => line.startsWith('- [ ]'));
+						}
+						res.writeHead(200, { 'Content-Type': 'application/json' });
+						res.end(JSON.stringify({ ok: true, data: ongoingTasks }));
+						break;
 					}
-					res.writeHead(200, { 'Content-Type': 'application/json' });
-					res.end(JSON.stringify({ ok: true, data: ongoingTasks }));
-					break;
-				}
-				case 'dropped': {
-					let droppedTasks;
-					if (!dataFormatter) {
-						droppedTasks = await this.getTasksFromMarkdown(data.split('\n').filter(line => line.startsWith('❌')));
-					} else {
-						droppedTasks = data.split('\n').filter(line => line.startsWith('❌'));
+					case 'dropped': {
+						let droppedTasks;
+						if (!dataFormatter) {
+							droppedTasks = await this.getTasksFromMarkdown(data.split('\n').filter(line => line.startsWith('❌')));
+						} else {
+							droppedTasks = data.split('\n').filter(line => line.startsWith('❌'));
+						}
+						res.writeHead(200, { 'Content-Type': 'application/json' });
+						res.end(JSON.stringify({ ok: true, data: droppedTasks }));
+						break;
 					}
-					res.writeHead(200, { 'Content-Type': 'application/json' });
-					res.end(JSON.stringify({ ok: true, data: droppedTasks }));
-					break;
-				}
-				case 'all': {
-					let allTasks;
-					if (!dataFormatter) {
-						allTasks = await this.getTasksFromMarkdown(
-							data.split('\n').filter(line => 
+					case 'all': {
+						let allTasks;
+						if (!dataFormatter) {
+							allTasks = await this.getTasksFromMarkdown(
+								data.split('\n').filter(line => 
+									line.trim() !== '' && // 排除空行
+									!line.startsWith('#') && // 排除标题行
+									!/^\s/.test(line) // 排除缩进行
+								)
+							);
+						} else {
+							allTasks = data.split('\n').filter(line => 
 								line.trim() !== '' && // 排除空行
 								!line.startsWith('#') && // 排除标题行
 								!/^\s/.test(line) // 排除缩进行
-							)
-						);
-					} else {
-						allTasks = data.split('\n').filter(line => 
-							line.trim() !== '' && // 排除空行
-							!line.startsWith('#') && // 排除标题行
-							!/^\s/.test(line) // 排除缩进行
-						);
+							);
+						}
+						res.writeHead(200, { 'Content-Type': 'application/json' });
+						res.end(JSON.stringify({ ok: true, data: allTasks }));
+						break;
 					}
-					res.writeHead(200, { 'Content-Type': 'application/json' });
-					res.end(JSON.stringify({ ok: true, data: allTasks }));
-					break;
-				}
-				default: {
-					res.writeHead(400, { 'Content-Type': 'text/plain' });
-					res.end('Invalid type parameter.\n');
+					default: {
+						res.writeHead(400, { 'Content-Type': 'text/plain' });
+						res.end('Invalid type parameter.\n');
+					}
 				}
 			}
-			return;
+			catch (err) {
+				console.error(`Failed to read file: ${dateFilePath}`, err);
+				res.writeHead(500, { 'Content-Type': 'text/plain' });
+				res.end('Failed to read file.\n');
+			}
 		}
 		if (!res.headersSent) {
 			res.writeHead(200, { 'Content-Type': 'application/json' });

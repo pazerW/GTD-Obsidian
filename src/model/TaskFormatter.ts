@@ -47,140 +47,60 @@ export class TaskFormatter {
 		return display;
 	}
 
+	static extractAllKeysAndValues(obj: any, prefix = ''): Record<string, any> {
+		const result: Record<string, any> = {};
+		for (const key in obj) {
+			if (!Object.prototype.hasOwnProperty.call(obj, key)) continue;
+			const value = obj[key];
+			const fullKey = prefix ? `${prefix}.${key}` : key;
+			if (value && typeof value === 'object' && !Array.isArray(value)) {
+				Object.assign(result, this.extractAllKeysAndValues(value, fullKey));
+			} else {
+				result[fullKey] = value;
+			}
+		}
+		return result;
+	}
+
+
 	static format(task: Task,weekGoals=false): string {
 		const parts: string[] = [];
-		if (task.flagged) parts.push('🚩');
+				// 将task 所有的key 和value 格式化为json字符串，组成一个URL的参数；
+		const allTaskProps = this.extractAllKeysAndValues(task);
+		const taskParams = encodeURIComponent(JSON.stringify(allTaskProps));
 		if (weekGoals) {
-			parts.push(` [${task.name}](omnifocus:///task/${task.id})`);
+			parts.push(` [${task.name}](omnifocus:///task/${task.id}?params=${taskParams})`);
 
 		}else if (task.dropDate) {
 			const date = new Date(task.dropDate);
-			parts.push(`❌ ${date.getHours().toString().padStart(2, '0')}:${date.getMinutes().toString().padStart(2, '0')} [${task.name}](omnifocus:///task/${task.id})`);
+			parts.push(`❌ ${date.getHours().toString().padStart(2, '0')}:${date.getMinutes().toString().padStart(2, '0')} [${task.name}](omnifocus:///task/${task.id}?params=${taskParams})`);
 		} else {
-			parts.push(`- [${task.completed ? 'x' : ' '}] [${task.name}](omnifocus:///task/${task.id})`);
+			parts.push(`- [${task.completed ? 'x' : ' '}] [${task.name}](omnifocus:///task/${task.id}?params=${taskParams})`);
 		}
-		if (task.project && !weekGoals) parts.push(`🗄️ ${task.project}`);
+		if (task.flagged) parts.push('🚩');
 		if (task.tags?.length) parts.push(`🏷️ ${task.tags.join(', ')}`);
-		if (task.repetitionRule) parts.push(`🔁 ${this.parseRRULE(task.repetitionRule)}`);
-		if (task.dueDate && !weekGoals) {
-			const date = new Date(task.dueDate);
-			parts.push(`📅 ${date.getHours().toString().padStart(2, '0')}:${date.getMinutes().toString().padStart(2, '0')}`);
-		}
-		if (task.estimatedMinutes && !weekGoals) parts.push(`⌛ ${task.estimatedMinutes}分钟`);
-		if (task.deferDate) {
-			const date = new Date(task.deferDate);
-			parts.push(`🧊 ${(date.getMonth() + 1).toString().padStart(2, '0')}月${date.getDate().toString().padStart(2, '0')}日`);
-		}
+
 		if (task.completionDate) {
 			const date = new Date(task.completionDate);
 			parts.push(`✅ ${date.getHours().toString().padStart(2, '0')}:${date.getMinutes().toString().padStart(2, '0')}`);
 		}
 		if (task.note && !weekGoals) parts.push(`📔 ${task.note.replace(/\r?\n/g, ' ')}`);
+
 		return parts.join(' ');
 	}
 
 	static parseLineToTask(line: string): any {
 		// - [ ] [「回归」2.声音是人的第二名片](omnifocus:///task/mRkb257lHbX) 🗄️ 配音学习 🏷️ Today 你好 🔁 每天 📅 13:30 ⌛ 30分钟 🧊 23:59 ✅ 23:59 📔 你好
-		const regex = /- \[(x| )\] \[([^\]]+)\]\(omnifocus:\/\/\/task\/([^\)]+)\)(.*)/;
-		const match = line.match(regex);
-		if (!match) return null;
-
-		const [, completed, name, id, rest] = match;
-		const task: any = {
-			id,
-			name,
-			completed: completed === 'x',
-			project: '',
-			tags: [],
-			repetitionRule: null,
-			dueDate: null,
-			estimatedMinutes: null,
-			deferDate: null,
-			completionDate: null,
-			note: '',
-			flagged: false,
-			dropDate: null
-		};
-
-		let remain = rest;
-
-		// 🚩
-		if (remain.includes('🚩')) {
-			task.flagged = true;
-			remain = remain.replace('🚩', '');
+		//  [跑步30km](omnifocus:///task/fIM-Mu_UUkV?params=%7B%22name%22%3A%22%E8%B7%91%E6%AD%A530km%22%2C%22id%22%3A%22fIM-Mu_UUkV%22%2C%22note%22%3A%22%22%2C%22dueDate%22%3A%222025-05-24T01%3A00%3A00.000Z%22%2C%22deferDate%22%3Anull%2C%22dropDate%22%3Anull%2C%22flagged%22%3Atrue%2C%22completed%22%3Afalse%2C%22completionDate%22%3Anull%2C%22estimatedMinutes%22%3Anull%2C%22added%22%3A%222025-05-17T10%3A22%3A01.466Z%22%2C%22repetitionRule%22%3A%22%22%2C%22modified%22%3A%222025-05-17T10%3A26%3A24.274Z%22%2C%22inInbox%22%3Afalse%2C%22tags%22%3A%5B%22Week%22%5D%2C%22hasChildren%22%3Afalse%2C%22assignedContainer%22%3Anull%2C%22project%22%3A%22%E7%9B%AE%E6%A0%87%22%2C%22parent%22%3A%22%E7%9B%AE%E6%A0%87%22%2C%22folder%22%3A%22%E8%AE%A1%E5%88%92%E4%B8%8E%E7%9B%AE%E6%A0%87%22%2C%22parentFolders%22%3A%5B%22%E8%AE%A1%E5%88%92%E4%B8%8E%E7%9B%AE%E6%A0%87%22%5D%7D) 🚩 🏷️ Week
+		const paramsMatch = line.match(/\?params=([^)\]]+)/);
+		if (paramsMatch) {
+			try {
+				const jsonStr = decodeURIComponent(paramsMatch[1]);
+				const obj = JSON.parse(jsonStr);
+				return obj;
+			} catch (e) {
+				return null;
+			}
 		}
-
-		// 🗄️ 项目
-		const projectMatch = remain.match(/🗄️ ([^🏷️🔁📅⌛🧊✅📔]+)/);
-		if (projectMatch) {
-			task.project = projectMatch[1].trim();
-			remain = remain.replace(projectMatch[0], '');
-		}
-
-		// 🏷️ 标签
-		const tagsMatch = remain.match(/🏷️ ([^🔁📅⌛🧊✅📔]+)/);
-		if (tagsMatch) {
-			task.tags = tagsMatch[1].split(' ').map(t => t.trim()).filter(Boolean);
-			remain = remain.replace(tagsMatch[0], '');
-		}
-
-		// 🔁 重复规则
-		const repeatMatch = remain.match(/🔁 ([^📅⌛🧊✅📔]+)/);
-		if (repeatMatch) {
-			task.repetitionRule = repeatMatch[1].trim();
-			remain = remain.replace(repeatMatch[0], '');
-		}
-
-		// 📅 截止时间
-		const dueMatch = remain.match(/📅 (\d{2}):(\d{2})/);
-		if (dueMatch) {
-			const now = new Date();
-			now.setHours(Number(dueMatch[1]), Number(dueMatch[2]), 0, 0);
-			task.dueDate = now.toISOString();
-			remain = remain.replace(dueMatch[0], '');
-		}
-
-		// ⌛ 预计时间
-		const estMatch = remain.match(/⌛ (\d+)分钟/);
-		if (estMatch) {
-			task.estimatedMinutes = Number(estMatch[1]);
-			remain = remain.replace(estMatch[0], '');
-		}
-
-		// 🧊 推迟日期
-		const deferMatch = remain.match(/🧊 (\d{2})月(\d{2})日/);
-		if (deferMatch) {
-			const now = new Date();
-			now.setMonth(Number(deferMatch[1]) - 1, Number(deferMatch[2]));
-			task.deferDate = now.toISOString();
-			remain = remain.replace(deferMatch[0], '');
-		}
-
-		// ✅ 完成时间
-		const compMatch = remain.match(/✅ (\d{2}):(\d{2})/);
-		if (compMatch) {
-			const now = new Date();
-			now.setHours(Number(compMatch[1]), Number(compMatch[2]), 0, 0);
-			task.completionDate = now.toISOString();
-			remain = remain.replace(compMatch[0], '');
-		}
-
-		// ❌ 丢弃时间
-		const dropMatch = remain.match(/❌ (\d{2}):(\d{2})/);
-		if (dropMatch) {
-			const now = new Date();
-			now.setHours(Number(dropMatch[1]), Number(dropMatch[2]), 0, 0);
-			task.dropDate = now.toISOString();
-			remain = remain.replace(dropMatch[0], '');
-		}
-
-		// 📔 备注
-		const noteMatch = remain.match(/📔 (.+)$/);
-		if (noteMatch) {
-			task.note = noteMatch[1].trim();
-			remain = remain.replace(noteMatch[0], '');
-		}
-
-		return task;
 	}
 }

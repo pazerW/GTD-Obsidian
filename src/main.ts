@@ -31,21 +31,16 @@ export default class GTDPlugin extends Plugin {
 
 		this.registerObsidianProtocolHandler("obsidian_gtd_sync_task", async (e) => {
 			new Notice('开始同步任务');
-			console.log('Received protocol date :', e.date);
+			console.log('开始同步任务');
 			if (!e || !e.date || !/^\d{4}-\d{2}-\d{2}$/.test(e.date)) {
 				console.error('Invalid date format or missing data');
 				return;
 			}
-			console.log('Received data:', e.date);
 			this.handleDateSelected(new Date(e.date));
 		});
-
-
 		// Perform additional things with the ribbon
 		ribbonIconEl.addClass('obsidian-gtd-plugin-class');
-
 		this.addSettingTab(new SettingTab(this.app, this));
-
 	}
 
 	onunload() {
@@ -271,7 +266,14 @@ export default class GTDPlugin extends Plugin {
 				: '';
 			const dateFilePath = this.settings.savePath + '/' + dateFileName;
 			try {
-				const data = await this.app.vault.adapter.read(dateFilePath);
+				let data: string;
+				try {
+					data = await this.app.vault.adapter.read(dateFilePath);
+				} catch (err) {
+					// 文件不存在则创建空文件
+					await this.app.vault.adapter.write(dateFilePath, '');
+					data = '';
+				}
 				switch (type) {
 					case 'completed': {
 						let completedTasks;

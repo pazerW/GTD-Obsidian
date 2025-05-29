@@ -68,23 +68,34 @@ export class TaskFormatter {
 				// 将task 所有的key 和value 格式化为json字符串，组成一个URL的参数；
 		const allTaskProps = this.extractAllKeysAndValues(task);
 		const taskParams = encodeURIComponent(JSON.stringify(allTaskProps));
+		// let taskName = `task.projectask.name`;
+		const nameParts = [
+			// Array.isArray(task.parentFolders) ? task.parentFolders.join('/') : task.parentFolders,
+			`【${task.project}】`,
+			task.name,
+		].filter(Boolean);
+		const taskName = nameParts.join('');
 		if (weekGoals) {
-			parts.push(` [${task.name}](omnifocus:///task/${task.id}?params=${taskParams})`);
+			parts.push(` [${taskName}](omnifocus:///task/${task.id}?params=${taskParams})`);
 
 		}else if (task.dropDate) {
 			const date = new Date(task.dropDate);
-			parts.push(`❌ ${date.getHours().toString().padStart(2, '0')}:${date.getMinutes().toString().padStart(2, '0')} [${task.name}](omnifocus:///task/${task.id}?params=${taskParams})`);
+			parts.push(`❌ ${date.getHours().toString().padStart(2, '0')}:${date.getMinutes().toString().padStart(2, '0')} [${taskName}](omnifocus:///task/${task.id}?params=${taskParams})`);
 		} else {
-			parts.push(`- [${task.completed ? 'x' : ' '}] [${task.name}](omnifocus:///task/${task.id}?params=${taskParams})`);
+			parts.push(`- [${task.completed ? 'x' : ' '}] [${taskName}](omnifocus:///task/${task.id}?params=${taskParams})`);
 		}
 		if (task.flagged) parts.push('🚩');
 		if (task.tags?.length) parts.push(`🏷️ ${task.tags.join(', ')}`);
+		if (task.dueDate) {
+			const date = new Date(task.dueDate);
+			parts.push(`📅 ${date.getHours().toString().padStart(2, '0')}:${date.getMinutes().toString().padStart(2, '0')}`);
+		}
 
 		if (task.completionDate) {
 			const date = new Date(task.completionDate);
 			parts.push(`✅ ${date.getHours().toString().padStart(2, '0')}:${date.getMinutes().toString().padStart(2, '0')}`);
 		}
-		if (task.note && !weekGoals) parts.push(`📔 ${task.note.replace(/\r?\n/g, ' ')}`);
+		// if (task.note && !weekGoals) parts.push(`📔 ${task.note.replace(/\r?\n/g, ' ')}`);
 
 		return parts.join(' ');
 	}

@@ -176,24 +176,24 @@ export default class GTDPlugin extends Plugin {
 		const droppedLines = droppedTasks.map(task => TaskFormatter.format(task));
 
 		const lines: string[] = [];
-		const yesterdayLines: string[] = [];
+		// const yesterdayLines: string[] = [];
 
 		// 查找 date 上一日的md文件，读取当中今日任务中，没有完成的任务
-		const yesterday = new Date(date);
-		yesterday.setDate(yesterday.getDate() - 1);
-		const pad = (n: number) => n.toString().padStart(2, '0');
-		const formatDateWithPad = (d: Date) => `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}`;
-		const yesterdayFileName = `${formatDateWithPad(yesterday)}.md`;
-		const yesterdayFilePath = this.settings.savePath + '/' + yesterdayFileName;
-		try {
-			const data = await this.app.vault.adapter.read(yesterdayFilePath);
-			const yesterdayTask = data.split('\n').filter(line => line.startsWith('- [ ]'));
-			if (yesterdayTask.length > 0) {
-				yesterdayLines.push(...yesterdayTask);
-			}
-		} catch (err) {
-			console.warn(`Failed to read yesterday's file: ${yesterdayFilePath}`, err);
-		}
+		// const yesterday = new Date(date);
+		// yesterday.setDate(yesterday.getDate() - 1);
+		// const pad = (n: number) => n.toString().padStart(2, '0');
+		// const formatDateWithPad = (d: Date) => `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}`;
+		// const yesterdayFileName = `${formatDateWithPad(yesterday)}.md`;
+		// const yesterdayFilePath = this.settings.savePath + '/' + yesterdayFileName;
+		// try {
+		// 	const data = await this.app.vault.adapter.read(yesterdayFilePath);
+		// 	const yesterdayTask = data.split('\n').filter(line => line.startsWith('- [ ]'));
+		// 	if (yesterdayTask.length > 0) {
+		// 		yesterdayLines.push(...yesterdayTask);
+		// 	}
+		// } catch (err) {
+		// 	console.warn(`Failed to read yesterday's file: ${yesterdayFilePath}`, err);
+		// }
 		if (weekGoals.length > 0) {
 			const weekNumber = (() => {
 				const d = new Date(date);
@@ -205,19 +205,20 @@ export default class GTDPlugin extends Plugin {
 			lines.push(...weekGoals);
 		}
 		
-		if (yesterdayLines.length > 0) {
-			lines.push(`## 昨日任务 - ${yesterdayLines.length} 个\n`);
-			lines.push(...yesterdayLines);
-		}
+		// if (yesterdayLines.length > 0) {
+		// 	lines.push(`## 昨日任务 - ${yesterdayLines.length} 个\n`);
+		// 	lines.push(...yesterdayLines);
+		// }
 		if (ongoingLines.length > 0) {
 			// 去重：如果 yesterdayLines 中的任务（按开头内容）和 ongoingLines 有重复，则 ongoingLines 只保留不重复的
-			const yesterdayTaskSet = new Set(
-				yesterdayLines.map(line => line.replace(/\(omnifocus:\/\/\/task\/[^\)]*\).*/, '').trim())
-			);
-			const filteredOngoingLines = ongoingLines.filter(line => {
-				const key = line.replace(/\(omnifocus:\/\/\/task\/[^\)]*\).*/, '').trim();
-				return !yesterdayTaskSet.has(key);
-			});
+			// const yesterdayTaskSet = new Set(
+			// 	yesterdayLines.map(line => line.replace(/\(omnifocus:\/\/\/task\/[^\)]*\).*/, '').trim())
+			// );
+			// const filteredOngoingLines = ongoingLines.filter(line => {
+			// 	const key = line.replace(/\(omnifocus:\/\/\/task\/[^\)]*\).*/, '').trim();
+			// 	return !yesterdayTaskSet.has(key);
+			// });
+			const filteredOngoingLines = ongoingLines;
 			lines.push(`\n## 今日任务 - ${filteredOngoingLines.length} 个\n`);
 			lines.push(...filteredOngoingLines);
 		}

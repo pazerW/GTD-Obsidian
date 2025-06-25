@@ -74,7 +74,8 @@ export class TaskFormatter {
 			`【${task.project}】`,
 			task.name,
 		].filter(Boolean);
-		const taskName = nameParts.join('');
+		let taskName = nameParts.join('');
+		taskName = taskName.replace(/[\r\n]/g, '').slice(0, 100);
 		if (weekGoals) {
 			parts.push(` [${taskName}](omnifocus:///task/${task.id}?params=${taskParams})`);
 

@@ -156,7 +156,7 @@ export default class GTDPlugin extends Plugin {
 
 
 		// 先将包含 "today" 标签的任务单独提取出来，然后按 dueDate 时间正序排序（无 dueDate 的排在最后）
-		const todayTasks = tasks.filter(task => task.tags?.includes(TODAY_TAG));
+		const todayTasks = tasks.filter(task => task.tags?.includes(TODAY_TAG) && !task.completionDate && !task.dropDate);
 		const otherTasks = tasks.filter(task => !task.tags?.includes(TODAY_TAG));
 		todayTasks.sort((a, b) => {
 			if (!a.dueDate && !b.dueDate) return 0;
@@ -174,10 +174,13 @@ export default class GTDPlugin extends Plugin {
 
 		tasks =  otherTasks;
 		// 按属性区分任务
-		const completedTasks = tasks.filter(task => task.completed);
-		const ongoingTasks = tasks.filter(task => !task.completed && !task.dropDate);
+		const completedTasks = tasks.filter(task => task.completionDate);
+		const ongoingTasks = tasks.filter(task => !task.completionDate && !task.dropDate);
 		const droppedTasks = tasks.filter(task => task.dropDate);
-		const ongoingTodayTasks = todayTasks.filter(task => !task.completed && !task.dropDate && task.tags?.includes(TODAY_TAG));
+		const ongoingTodayTasks = todayTasks.filter(task => !task.completionDate && !task.dropDate && task.tags?.includes(TODAY_TAG));
+
+		// 主任务完成，子任务也完成但是completted 为 false 的任务
+		const completedTasks_ = completedTasks.map(task => ({ ...task, completed: true }));
 
 		// 只保留 dueDate 与 date 在同一周的 week 任务
 		const isSameWeek = (d1: string, d2: string) => {
@@ -195,7 +198,7 @@ export default class GTDPlugin extends Plugin {
 			.map(task => TaskFormatter.format(task, true));
 		const ongoingTodayLines = ongoingTodayTasks.map(task => TaskFormatter.format(task));
 		const ongoingLines = ongoingTasks.map(task => TaskFormatter.format(task));
-		const completedLines = completedTasks.map(task => TaskFormatter.format(task));
+		const completedLines = completedTasks_.map(task => TaskFormatter.format(task));
 		const droppedLines = droppedTasks.map(task => TaskFormatter.format(task));
 
 		const lines: string[] = [];

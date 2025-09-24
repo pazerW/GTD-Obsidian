@@ -1,9 +1,9 @@
-import { App, Notice, Plugin, PluginSettingTab, Setting, TFolder } from 'obsidian';
+import { App, Notice, Plugin, PluginSettingTab, Setting, TFolder, MarkdownPostProcessorContext } from 'obsidian';
 
 import { DatePickerModal } from './modal/DatePickerModal';
 import { generateSecureKey,verifySecureKey } from './tools/secureKey';
-import { Task } from './model/Task';
-import { TaskFormatter } from './model/TaskFormatter';
+import { Task } from './modal/Task';
+import { TaskFormatter } from './modal/TaskFormatter';
 import { TimelineRenderer } from './renderer/TimelineRenderer';
 import * as url from 'url';
 import * as http from 'http';
@@ -20,7 +20,7 @@ const DEFAULT_SETTINGS: GTDPluginSettings = {
 	savePath: 'GTDPluginSettings_savePath',
 	timelineLayout: 'vertical',
 	timelineIntervalMinutes: 30,
-	enableTimelineDragging: false,
+	enableTimelineDragging: true,
 }
 
 const PLUGIN_VERSION = '1.1.0.5';
@@ -72,7 +72,6 @@ export default class GTDPlugin extends Plugin {
 				this.handleTimelineContentUpdate(event.detail, ctx);
 			});
 			
-			console.log('Rendering timeline with source:', source, 'options:', options);
 			ctx.addChild(renderer);
 			
 			// 在渲染器被移除时从集合中删除
@@ -127,18 +126,51 @@ export default class GTDPlugin extends Plugin {
 	/**
 	 * 处理timeline内容更新
 	 */
-	handleTimelineContentUpdate(detail: { oldContent: string; newContent: string; oldLine: string; newLine: string }, ctx: unknown) {
+	async handleTimelineContentUpdate(detail: { oldContent: string; newContent: string; oldLine: string; newLine: string }, ctx: MarkdownPostProcessorContext) {
 		console.log('Timeline content updated:', detail);
 		
-		// 这里可以实现将更新的内容保存回原文件的逻辑
-		// 由于timeline是嵌入在markdown文件中的代码块，
-		// 我们需要通过ctx获取原文件信息并更新内容
+		try {
+			// 尝试从上下文中获取文件路径
+			const sourcePath = ctx?.sourcePath;
+			
+			if (!sourcePath) {
+				console.warn('No source path found in context');
+				new Notice(`任务已更新但无法保存到文件: ${detail.oldLine} → ${detail.newLine}`);
+				return;
+			}
+			
+			// 读取原文件内容
+			const fileContent = await this.app.vault.adapter.read(sourcePath);
+			
+			// 在文件内容中查找并替换timeline代码块中的对应行
+			const updatedFileContent = this.updateTimelineContentInFile(fileContent, detail.oldLine, detail.newLine);
+			
+			if (updatedFileContent !== fileContent) {
+				// 写回文件
+				await this.app.vault.adapter.write(sourcePath, updatedFileContent);
+				new Notice(`任务已更新并保存: ${detail.oldLine} → ${detail.newLine}`);
+			} else {
+				new Notice(`任务已更新但文件内容未改变: ${detail.oldLine} → ${detail.newLine}`);
+			}
+			
+		} catch (error) {
+			console.error('Failed to update file:', error);
+			new Notice(`文件保存失败: ${error.message}`);
+		}
+	}
+	
+	/**
+	 * 在文件内容中更新timeline代码块中的指定行
+	 */
+	private updateTimelineContentInFile(fileContent: string, oldLine: string, newLine: string): string {
+		// 使用正则表达式匹配timeline代码块
+		const timelineBlockRegex = /```timeline\n([\s\S]*?)\n```/g;
 		
-		// 暂时只记录更新，实际的文件保存需要更复杂的实现
-		// 因为需要定位到原始的markdown文件和代码块位置
-		
-		// 可以通过事件通知用户内容已更改
-		new Notice(`任务已更新: ${detail.oldLine} → ${detail.newLine}`);
+		return fileContent.replace(timelineBlockRegex, (match, blockContent) => {
+			// 在代码块中查找并替换指定行
+			const updatedBlockContent = blockContent.replace(oldLine, newLine);
+			return `\`\`\`timeline\n${updatedBlockContent}\n\`\`\``;
+		});
 	}
 
 	handleRibbonClick() {
@@ -216,7 +248,7 @@ export default class GTDPlugin extends Plugin {
 			});
 		});
 		const prod = process.env.NODE_ENV === "production";
-		if (prod) {
+		if (!prod) {
 			server.listen(port, () => {
 				console.log(`HTTP server listening on port ${port}`);
 			});
@@ -254,7 +286,8 @@ export default class GTDPlugin extends Plugin {
 		const ongoingTasks = tasks.filter(task => !task.completionDate && !task.dropDate);
 		const droppedTasks = tasks.filter(task => task.dropDate);
 		const ongoingTodayTasks = todayTasks.filter(task => !task.completionDate && !task.dropDate && task.tags?.includes(TODAY_TAG));
-
+		const timeLineTasks = ongoingTasks.concat(ongoingTodayTasks);
+		const timeLineString = timeLineTasks.map(task => TaskFormatter.formatTimeline(task));
 		// 主任务完成，子任务也完成但是completted 为 false 的任务
 		const completedTasks_ = completedTasks.map(task => ({ ...task, completed: true }));
 
@@ -288,6 +321,11 @@ export default class GTDPlugin extends Plugin {
 			})();
 			lines.push(`## ${new Date(date).getFullYear()}年${weekNumber}周目标 - ${weekGoals.length} 个\n`);
 			lines.push(...weekGoals);
+		}
+		if(timeLineTasks.length>0){
+			lines.push(`\`\`\`timeline`);
+			lines.push(...timeLineString);
+			lines.push(`\`\`\``);
 		}
 		if (ongoingTodayLines.length > 0) {
 			const filteredOngoingTodayLines = ongoingTodayLines;

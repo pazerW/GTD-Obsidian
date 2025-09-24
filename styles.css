@@ -21,6 +21,9 @@ If your plugin does not need CSS, delete this file.
     border: 1px solid var(--background-modifier-border);
     min-height: 50px;
     display: block;
+    /* 支持宽任务溢出显示 */
+    overflow-x: auto;
+    overflow-y: visible;
 }
 
 .timeline {
@@ -100,6 +103,8 @@ If your plugin does not need CSS, delete this file.
     min-height: 100%;
     z-index: 10;
     pointer-events: none;
+    /* 允许任务超出容器边界显示 */
+    overflow: visible;
 }
 
 .timeline-tasks-overlay > * {
@@ -229,8 +234,8 @@ If your plugin does not need CSS, delete this file.
 }
 
 .timeline-task-vertical-whole .timeline-task-dot {
-    width: 12px;
-    height: 12px;
+    width: 20px;
+    height: 20px;
     border-radius: 50%;
     background: var(--interactive-accent);
     border: 2px solid var(--background-primary);
@@ -251,6 +256,58 @@ If your plugin does not need CSS, delete this file.
     animation: pulse 2s infinite;
 }
 
+/* 可点击切换状态的任务点样式 */
+.timeline-task-dot.clickable-toggle {
+    cursor: pointer;
+    transition: all 0.2s ease;
+    border: 3px solid var(--background-primary);
+    position: relative;
+}
+
+.timeline-task-dot.clickable-toggle:active {
+    transform: scale(0.9);
+}
+
+/* 未完成任务点悬停效果 - 变成完成状态 */
+.timeline-task-vertical-whole.pending .timeline-task-dot.clickable-toggle:hover,
+.timeline-task-vertical.pending .timeline-task-dot.clickable-toggle:hover {
+    transform: scale(1.2);
+    background: var(--text-success) !important;
+    box-shadow: 0 0 8px rgba(var(--text-success-rgb), 0.5);
+}
+
+.timeline-task-vertical-whole.pending .timeline-task-dot.clickable-toggle:hover::after,
+.timeline-task-vertical.pending .timeline-task-dot.clickable-toggle:hover::after {
+    content: '✓';
+    position: absolute;
+    top: 50%;
+    left: 50%;
+    transform: translate(-50%, -50%);
+    color: white;
+    font-size: 8px;
+    font-weight: bold;
+}
+
+/* 已完成任务点悬停效果 - 变成未完成状态 */
+.timeline-task-vertical-whole.completed .timeline-task-dot.clickable-toggle:hover,
+.timeline-task-vertical.completed .timeline-task-dot.clickable-toggle:hover {
+    transform: scale(1.2);
+    background: var(--interactive-accent) !important;
+    box-shadow: 0 0 8px rgba(var(--interactive-accent-rgb), 0.5);
+}
+
+.timeline-task-vertical-whole.completed .timeline-task-dot.clickable-toggle:hover::after,
+.timeline-task-vertical.completed .timeline-task-dot.clickable-toggle:hover::after {
+    content: '○';
+    position: absolute;
+    top: 50%;
+    left: 50%;
+    transform: translate(-50%, -50%);
+    color: white;
+    font-size: 10px;
+    font-weight: bold;
+}
+
 .timeline-task-vertical-whole .timeline-task-content {
     flex: 1;
     min-width: 0;
@@ -258,6 +315,13 @@ If your plugin does not need CSS, delete this file.
     flex-direction: column;
     justify-content: flex-start;
     height: 100%;
+    border-radius: 4px;
+    transition: background-color 0.2s ease;
+}
+
+/* 任务内容点击编辑区域悬停效果 */
+.timeline-task-content[style*="cursor: pointer"]:hover {
+    background-color: rgba(var(--interactive-accent-rgb), 0.05);
 }
 
 .timeline-task-vertical-whole .timeline-task-name {
@@ -274,6 +338,19 @@ If your plugin does not need CSS, delete this file.
 .timeline-task-vertical-whole.completed .timeline-task-name {
     text-decoration: line-through;
     color: var(--text-muted);
+}
+
+/* 限制任务名称为两行显示 */
+.timeline-task-vertical-whole .timeline-task-name.two-line-limit {
+    display: -webkit-box;
+    font-size: 13px;
+    -webkit-line-clamp: 3;
+    line-clamp: 3;
+    -webkit-box-orient: vertical;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    line-height: 1.2;
+    max-height: calc(1.3em * 3); /* 两行的高度 */
 }
 
 .timeline-task-vertical-whole .timeline-task-time-range {
@@ -300,6 +377,33 @@ If your plugin does not need CSS, delete this file.
     color: var(--text-warning);
     font-weight: 500;
     margin-top: 2px;
+}
+
+/* 宽任务适配 - 支持200%基础宽度 */
+.timeline-task-vertical-whole {
+    min-width: 140px; /* 确保最小宽度（45%基础宽度对应，4个任务时） */
+    max-width: none; /* 允许任务超出容器宽度 */
+}
+
+/* 窄任务适配 - 当任务宽度在50%-100%之间时 */
+.timeline-task-vertical-whole[style*="width: 5"],
+.timeline-task-vertical-whole[style*="width: 6"],
+.timeline-task-vertical-whole[style*="width: 7"],
+.timeline-task-vertical-whole[style*="width: 8"],
+.timeline-task-vertical-whole[style*="width: 9"] {
+    .timeline-task-name,
+    .timeline-task-time-range {
+        font-size: 13px;
+        padding: 3px 6px;
+    }
+    
+    padding: 6px 10px;
+    gap: 8px;
+}
+
+/* 重叠任务间距优化 */
+.timeline-task-vertical-whole + .timeline-task-vertical-whole {
+    margin-left: 2px; /* 任务之间的小间隙 */
 }
 
 /* 重叠任务样式增强 */
@@ -397,8 +501,8 @@ If your plugin does not need CSS, delete this file.
 
 
 .timeline-task-vertical .timeline-task-dot {
-    width: 12px;
-    height: 12px;
+    width: 20px;
+    height: 20px;
     border-radius: 50%;
     background: var(--interactive-accent);
     border: 2px solid var(--background-primary);
@@ -418,6 +522,8 @@ If your plugin does not need CSS, delete this file.
     animation: pulse 2s infinite;
 }
 
+/* 旧的 timeline-task-vertical clickable-complete 样式已移除，现在使用统一的 clickable-toggle 样式 */
+
 .timeline-task-vertical .timeline-task-content {
     flex: 1;
     min-width: 0;
@@ -425,6 +531,8 @@ If your plugin does not need CSS, delete this file.
     flex-direction: column;
     justify-content: flex-start;
     height: 100%;
+    border-radius: 4px;
+    transition: background-color 0.2s ease;
 }
 
 .timeline-task-vertical .timeline-task-name {
@@ -732,19 +840,4 @@ If your plugin does not need CSS, delete this file.
     margin-top: 10px;
 }
 
-/* 任务可点击状态 */
-.timeline-task-vertical-whole,
-.timeline-task-vertical {
-    cursor: pointer;
-    user-select: none;
-}
-
-.timeline-task-vertical-whole:hover,
-.timeline-task-vertical:hover {
-    background: var(--background-modifier-hover);
-}
-
-.timeline-task-vertical-whole:active,
-.timeline-task-vertical:active {
-    transform: scale(0.98);
-}
+/* 移除了整体任务元素的点击样式，现在只有任务内容和任务点可以点击 */

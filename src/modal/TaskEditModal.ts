@@ -1,5 +1,5 @@
 import { App, Modal, Setting } from 'obsidian';
-import { Task } from '../model/Task';
+import { Task } from './Task';
 import { TimeParser } from '../utils/TimeParser';
 
 export interface TaskEditData {

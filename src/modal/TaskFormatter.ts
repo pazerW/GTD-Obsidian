@@ -97,7 +97,39 @@ export class TaskFormatter {
 			parts.push(`✅ ${date.getHours().toString().padStart(2, '0')}:${date.getMinutes().toString().padStart(2, '0')}`);
 		}
 		// if (task.note && !weekGoals) parts.push(`📔 ${task.note.replace(/\r?\n/g, ' ')}`);
+		return parts.join(' ');
+	}
 
+	static formatTimeline(task: Task): string {
+		const parts: string[] = [];
+				// 将task 所有的key 和value 格式化为json字符串，组成一个URL的参数；
+		// let taskName = `task.projectask.name`;
+		const nameParts = [
+			// Array.isArray(task.parentFolders) ? task.parentFolders.join('/') : task.parentFolders,
+			`【${task.project}】`,
+			task.name,
+		].filter(Boolean);
+		let taskName = nameParts.join('');
+		taskName = taskName.replace(/[\r\n]/g, '').slice(0, 100);
+		if (task.dropDate) {
+			const date = new Date(task.dropDate);
+			parts.push(`❌ ${date.getHours().toString().padStart(2, '0')}:${date.getMinutes().toString().padStart(2, '0')} ${taskName}	`);
+		} else {
+			parts.push(`- [ ]${task.completed ? 'x' : ' '} ${taskName}`);
+		}
+		if (task.flagged) parts.push('🚩');
+		if (task.tags?.length) parts.push(`🏷️ ${task.tags.join(', ')}`);
+		if (task.dueDate) {
+			const date = new Date(task.dueDate);
+			const estimatedMinutes = task.estimatedMinutes ? task.estimatedMinutes : 25;
+
+			// 结束时间是，date，开始时间是 结束时间 - 预计时间
+			const startDate = new Date(date.getTime() - estimatedMinutes * 60000);
+			parts.push(`@${startDate.getHours().toString().padStart(2, '0')}:${startDate.getMinutes().toString().padStart(2, '0')}-${date.getHours().toString().padStart(2, '0')}:${date.getMinutes().toString().padStart(2, '0')}`);
+	
+		}
+
+		// if (task.note && !weekGoals) parts.push(`📔 ${task.note.replace(/\r?\n/g, ' ')}`);
 		return parts.join(' ');
 	}
 

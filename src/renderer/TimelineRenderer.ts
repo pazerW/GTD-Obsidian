@@ -2,7 +2,7 @@ import { MarkdownRenderChild, App } from 'obsidian';
 import { TimeParser } from '../utils/TimeParser';
 import { TimelineDragHandler, DragEventData } from './TimelineDragHandler';
 import { TaskEditModal, TaskEditData } from '../modal/TaskEditModal';
-import { Task } from '../model/Task';
+import { Task } from '../modal/Task';
 
 /**
  * 解析后的任务信息
@@ -89,8 +89,6 @@ export class TimelineRenderer extends MarkdownRenderChild {
                 return;
             }
 
-            // 添加调试信息
-            console.log('Timeline tasks:', sortedTasks);
 
             // 根据布局创建时间轴
             await this.createVerticalTimeline(timelineContainer, sortedTasks);
@@ -231,20 +229,17 @@ export class TimelineRenderer extends MarkdownRenderChild {
                 // 设置时间轴容器的最小高度，确保能包含所有时间槽
                 const totalHeight = timeSlots.length * 60; // 每个时间槽60px高度
                 timeline.style.minHeight = `${totalHeight}px`;
-                
-                console.log('Timeline debugging:');
-                console.log('  Total time slots:', timeSlots.length);
-                console.log('  First slot:', timeSlots[0]);
-                console.log('  Last slot:', timeSlots[timeSlots.length - 1]);
-                console.log('  Container height set to:', totalHeight, 'px');
-                
+
                 // 计算任务重叠布局
                 const taskLayout = this.calculateOverlapLayout(tasksWithTime);
                 
-                // 为每个任务创建完整的元素
-                for (const taskInfo of taskLayout) {
-                    this.createVerticalTaskWhole(tasksOverlay, taskInfo.task, timeSlots, taskInfo.offset, taskInfo.width);
-                }
+                // 延迟创建任务元素，确保容器已完全渲染
+                requestAnimationFrame(() => {
+                    // 为每个任务创建完整的元素
+                    for (const taskInfo of taskLayout) {
+                        this.createVerticalTaskWhole(tasksOverlay, taskInfo.task, timeSlots, taskInfo.offset, taskInfo.width, taskInfo.groupSize);
+                    }
+                });
                 
                 // 添加当前时间线
                 this.createCurrentTimeLine(tasksOverlay, timeSlots);
@@ -276,7 +271,8 @@ export class TimelineRenderer extends MarkdownRenderChild {
         task: ParsedTask, 
         timeSlots: Date[], 
         offsetPercentage = 0, 
-        widthPercentage = 100
+        widthPercentage = 100,
+        groupSize = 1
     ): void {
         const taskStartTime = task.startTime || task.dueTime;
         if (!taskStartTime) return;
@@ -302,7 +298,17 @@ export class TimelineRenderer extends MarkdownRenderChild {
         
         // 计算左边距和宽度（考虑重叠偏移）
         const baseLeft = 95; // 基础左边距（时间标签之后）
-        const totalContainerWidth = container.clientWidth || 400; // 容器总宽度
+        
+        // 获取容器宽度，使用多种方法确保准确性
+        let totalContainerWidth = container.clientWidth;
+        if (!totalContainerWidth || totalContainerWidth < 200) {
+            // 如果clientWidth不可用，尝试其他方法
+            totalContainerWidth = container.offsetWidth || 
+                                container.getBoundingClientRect().width ||
+                                this.containerEl.clientWidth ||
+                                600; // 最后的回退值
+        }
+        
         const availableWidth = totalContainerWidth - baseLeft - 20; // 可用宽度（减去右边距）
         
         // 重叠任务向右偏移，而不是向左
@@ -317,34 +323,60 @@ export class TimelineRenderer extends MarkdownRenderChild {
         taskElement.style.width = `${widthPixels}px`;
         taskElement.style.zIndex = `${10 + Math.floor(offsetPercentage / 10)}`; // 重叠任务层级更高
         
-        // 调试日志
-        console.log(`Task: ${task.name}, offset: ${offsetPercentage}%, width: ${widthPercentage}%, left: ${baseLeft + offsetPixels}px, width: ${widthPixels}px`);
-        
         // 创建任务点
-        taskElement.createDiv('timeline-task-dot');
+        const taskDot = taskElement.createDiv('timeline-task-dot');
+        
+        // 为所有任务添加点击切换完成状态功能
+        taskDot.addClass('clickable-toggle');
+        taskDot.addEventListener('click', (event) => {
+            event.preventDefault();
+            event.stopPropagation();
+            this.toggleTaskCompletion(task);
+        });
+        
+        // 根据任务状态设置不同的提示文本
+        if (task.completed) {
+            taskDot.title = '点击标记为未完成';
+        } else {
+            taskDot.title = '点击标记为完成';
+        }
         
         // 创建任务内容
         const taskContent = taskElement.createDiv('timeline-task-content');
         
         const taskName = taskContent.createDiv('timeline-task-name');
+        // 当重叠任务超过3个时，限制任务名称显示为两行
+        if (groupSize > 2) {
+            taskName.addClass('two-line-limit');
+        }
         taskName.setText(task.name);
         
         // 时间范围显示（包含持续时间）
         if (task.startTime && task.endTime) {
             const timeRange = taskContent.createDiv('timeline-task-time-range');
-            const timeRangeText = `${TimeParser.formatTime(task.startTime)} - ${TimeParser.formatTime(task.endTime)}`;
+            const timeRangeText = `${TimeParser.formatTime(task.startTime)}-${TimeParser.formatTime(task.endTime)}`;
             // 如果有持续时间，添加到时间范围后面
             if (task.duration) {
-                timeRange.setText(`${timeRangeText} (${TimeParser.formatDuration(task.duration)})`);
+                if (groupSize > 2) {
+                    timeRange.setText(`${timeRangeText}`);
+                } else {
+                    timeRange.setText(`${timeRangeText} (${TimeParser.formatDuration(task.duration)})`);
+                }
             } else {
                 timeRange.setText(timeRangeText);
             }
         } else if (task.startTime && task.duration) {
             const endTime = new Date(task.startTime.getTime() + task.duration * 60 * 1000);
             const timeRange = taskContent.createDiv('timeline-task-time-range');
-            const timeRangeText = `${TimeParser.formatTime(task.startTime)} - ${TimeParser.formatTime(endTime)}`;
-            timeRange.setText(`${timeRangeText} (${TimeParser.formatDuration(task.duration)})`);
+            const timeRangeText = `${TimeParser.formatTime(task.startTime)}-${TimeParser.formatTime(endTime)}`;
+            if (groupSize > 2) {
+                timeRange.setText(`${timeRangeText}`);
+            } else {
+                timeRange.setText(`${timeRangeText} (${TimeParser.formatDuration(task.duration)})`);
+            }
         }
+
+
         
         // 截止时间标签
         if (task.dueTime && task.startTime && task.dueTime !== task.startTime) {
@@ -376,7 +408,22 @@ export class TimelineRenderer extends MarkdownRenderChild {
         taskElement.addClass(task.completed ? 'completed' : 'pending');
         
         // 创建任务点
-        taskElement.createDiv('timeline-task-dot');
+        const taskDot = taskElement.createDiv('timeline-task-dot');
+        
+        // 为所有任务添加点击切换完成状态功能
+        taskDot.addClass('clickable-toggle');
+        taskDot.addEventListener('click', (event) => {
+            event.preventDefault();
+            event.stopPropagation();
+            this.toggleTaskCompletion(task);
+        });
+        
+        // 根据任务状态设置不同的提示文本
+        if (task.completed) {
+            taskDot.title = '点击标记为未完成';
+        } else {
+            taskDot.title = '点击标记为完成';
+        }
         
         // 创建任务内容
         const taskContent = taskElement.createDiv('timeline-task-content');
@@ -510,14 +557,7 @@ export class TimelineRenderer extends MarkdownRenderChild {
      */
     private generateDynamicTimeSlots(tasks: ParsedTask[]): Date[] {
         const tasksWithTime = tasks.filter(task => task.startTime || task.dueTime);
-        console.log('Dynamic time slots generation:');
-        console.log('  Tasks with time:', tasksWithTime.length);
-        console.log('  Task details:', tasksWithTime.map(t => ({
-            name: t.name,
-            startTime: t.startTime?.toLocaleTimeString(),
-            endTime: t.endTime?.toLocaleTimeString(),
-            dueTime: t.dueTime?.toLocaleTimeString()
-        })));
+
         if (tasksWithTime.length === 0) return [];
 
         // 获取所有任务的时间范围
@@ -548,14 +588,12 @@ export class TimelineRenderer extends MarkdownRenderChild {
         const allRangesEnd = new Date(Math.max(...mergedRanges.map(r => r.end.getTime())));
         const totalSpan = (allRangesEnd.getTime() - allRangesStart.getTime()) / (1000 * 60 * 60); // 小时
         
-        console.log('  Total time span:', totalSpan.toFixed(1), 'hours');
         
         let rangesForSlots = mergedRanges;
         if (totalSpan > 12) {
             // 如果总跨度超过12小时，优先显示晚间和跨夜任务
             const eveningRanges = mergedRanges.filter(range => range.start.getHours() >= 18 || range.end.getHours() <= 6);
             if (eveningRanges.length > 0) {
-                console.log('  Using evening/cross-day ranges only due to large time span');
                 rangesForSlots = eveningRanges;
             }
         }
@@ -571,38 +609,22 @@ export class TimelineRenderer extends MarkdownRenderChild {
             // 计算合理的最早开始时间：任务开始时间前2小时，但不早于6:00
             const taskStartHour = range.start.getHours();
             const reasonableEarliestHour = Math.max(6, taskStartHour - 2);
-            
-            console.log('  Range calculation for task:', {
-                rangeStart: range.start.toLocaleTimeString(),
-                taskStartHour,
-                reasonableEarliestHour,
-                bufferStart: bufferStart.toLocaleTimeString()
-            });
+
             
             const reasonableStart = new Date(range.start.getFullYear(), range.start.getMonth(), range.start.getDate(), reasonableEarliestHour, 0, 0);
             // 使用更早的时间作为实际开始时间（reasonableStart vs bufferStart）
             const actualStart = new Date(Math.min(bufferStart.getTime(), reasonableStart.getTime()));
-            
-            console.log('  Actual time range:', {
-                reasonableStart: reasonableStart.toLocaleTimeString(),
-                actualStart: actualStart.toLocaleTimeString()
-            });
+ 
             
             // 向后扩展一个时间间隔作为缓冲（可延伸到第二天凌晨1点）
             const bufferEnd = new Date(range.end.getTime() + intervalMs);
             const nextDayLimit = new Date(range.end.getFullYear(), range.end.getMonth(), range.end.getDate() + 1, 1, 0, 0);
             const actualEnd = new Date(Math.min(bufferEnd.getTime(), nextDayLimit.getTime()));
             
-            console.log('  End time calculation:', {
-                rangeEnd: range.end.toLocaleTimeString(),
-                bufferEnd: bufferEnd.toLocaleTimeString(),
-                actualEnd: actualEnd.toLocaleTimeString()
-            });
+
             
             // 生成这个范围内的时间槽
-            console.log('  Generating slots from', actualStart.toLocaleTimeString(), 'to', actualEnd.toLocaleTimeString());
             const rangeSlots = this.generateTimeSlotsForRange(actualStart, actualEnd);
-            console.log('  Generated', rangeSlots.length, 'slots for this range');
             
             // 合并到总的时间槽列表中（避免重复）
             for (const slot of rangeSlots) {
@@ -614,11 +636,7 @@ export class TimelineRenderer extends MarkdownRenderChild {
         
         // 按时间排序
         allSlots.sort((a, b) => a.getTime() - b.getTime());
-        
-        console.log('Dynamic time slots generated:', allSlots.length, 'slots');
-        console.log('First few slots:', allSlots.slice(0, 5).map(slot => TimeParser.formatTime(slot)));
-        console.log('Last few slots:', allSlots.slice(-5).map(slot => TimeParser.formatTime(slot)));
-        
+
         return allSlots;
     }
 
@@ -656,21 +674,11 @@ export class TimelineRenderer extends MarkdownRenderChild {
     private generateTimeSlotsForRange(startTime: Date, endTime: Date): Date[] {
         const slots: Date[] = [];
         const intervalMs = this.options.intervalMinutes * 60 * 1000;
-        
-        console.log('  generateTimeSlotsForRange called with:');
-        console.log('    startTime:', startTime.toISOString());
-        console.log('    endTime:', endTime.toISOString());
-        console.log('    startTime timestamp:', startTime.getTime());
-        console.log('    endTime timestamp:', endTime.getTime());
-        console.log('    endTime > startTime?', endTime.getTime() > startTime.getTime());
-        
-        // 检查是否跨夜：如果结束时间小于开始时间，说明跨夜了
+     // 检查是否跨夜：如果结束时间小于开始时间，说明跨夜了
         if (endTime.getTime() < startTime.getTime()) {
-            console.log('  Detected cross-day time range, adjusting endTime to next day');
             // 将结束时间调整到第二天
             const adjustedEndTime = new Date(endTime);
             adjustedEndTime.setDate(adjustedEndTime.getDate() + 1);
-            console.log('    adjusted endTime:', adjustedEndTime.toISOString());
             return this.generateTimeSlotsForRange(startTime, adjustedEndTime);
         }
         
@@ -786,12 +794,12 @@ export class TimelineRenderer extends MarkdownRenderChild {
         const height = totalSlots * slotHeight + (endPositionInSlot - startPositionInSlot) * slotHeight;
         
         // 只在位置异常时输出调试信息
-        if (top > 1000) {
-            console.warn('Unusual task position detected:');
-            console.warn('  Task time:', startTime.toLocaleTimeString(), '-', endTime.toLocaleTimeString());
-            console.warn('  First slot:', firstSlot.toLocaleTimeString());
-            console.warn('  Start slot index:', startSlotIndex, 'Calculated top:', top);
-        }
+        // if (top > 1000) {
+        //     console.warn('Unusual task position detected:');
+        //     console.warn('  Task time:', startTime.toLocaleTimeString(), '-', endTime.toLocaleTimeString());
+        //     console.warn('  First slot:', firstSlot.toLocaleTimeString());
+        //     console.warn('  Start slot index:', startSlotIndex, 'Calculated top:', top);
+        // }
         
         return {
             top: Math.max(0, top),
@@ -905,7 +913,7 @@ export class TimelineRenderer extends MarkdownRenderChild {
     /**
      * 计算重叠任务的布局
      */
-    private calculateOverlapLayout(tasks: ParsedTask[]): { task: ParsedTask, offset: number, width: number }[] {
+    private calculateOverlapLayout(tasks: ParsedTask[]): { task: ParsedTask, offset: number, width: number, groupSize: number }[] {
         // 为每个任务计算时间范围
         const taskRanges = tasks.map(task => {
             const startTime = task.startTime || task.dueTime;
@@ -938,33 +946,60 @@ export class TimelineRenderer extends MarkdownRenderChild {
         // 按开始时间排序
         taskRanges.sort((a, b) => a.startMs - b.startMs);
         
-        // 计算重叠层级
-        const result: { task: ParsedTask, offset: number, width: number }[] = [];
+        // 寻找重叠组并计算每组的布局
+        const result: { task: ParsedTask, offset: number, width: number, groupSize: number }[] = [];
+        const processedTasks = new Set<ParsedTask>();
         
         for (let i = 0; i < taskRanges.length; i++) {
             const currentTask = taskRanges[i];
-            let overlapLevel = 0;
             
-            // 检查与之前任务的重叠情况
-            for (let j = 0; j < i; j++) {
-                const prevTask = taskRanges[j];
+            if (processedTasks.has(currentTask.task)) {
+                continue; // 已经处理过的任务跳过
+            }
+            
+            // 找到与当前任务重叠的所有任务组成一个组
+            const overlapGroup = [currentTask];
+            processedTasks.add(currentTask.task);
+            
+            for (let j = i + 1; j < taskRanges.length; j++) {
+                const otherTask = taskRanges[j];
                 
-                // 检查时间是否重叠
-                const isOverlapping = currentTask.startMs < prevTask.endMs && currentTask.endMs > prevTask.startMs;
+                if (processedTasks.has(otherTask.task)) {
+                    continue;
+                }
                 
-                if (isOverlapping) {
-                    overlapLevel++;
+                // 检查是否与组中任何任务重叠
+                const hasOverlap = overlapGroup.some(groupTask => 
+                    otherTask.startMs < groupTask.endMs && otherTask.endMs > groupTask.startMs
+                );
+                
+                if (hasOverlap) {
+                    overlapGroup.push(otherTask);
+                    processedTasks.add(otherTask.task);
                 }
             }
             
-            // 计算偏移和宽度
-            const offsetPercentage = Math.min(overlapLevel * 10, 50); // 最多50%偏移
-            const widthPercentage = 100 - offsetPercentage; // 相应减少宽度
+            // 为这个重叠组计算从左到右的布局 - 使用200%基础宽度
+            const groupSize = overlapGroup.length;
+            const baseWidth = 100; // 基础宽度200%
+            let taskWidth = Math.max(baseWidth / groupSize, 50); // 每个任务的宽度，最小50%
             
-            result.push({
-                task: currentTask.task,
-                offset: offsetPercentage,
-                width: widthPercentage
+            // 特殊处理：超过3个任务时缩小50%
+            if (groupSize === 3) {
+                taskWidth = taskWidth * 0.68; // 缩小50%
+            }else if (groupSize > 3) {
+                taskWidth = taskWidth * 0.5; // 缩小50%
+            }
+            
+            overlapGroup.forEach((taskRange, index) => {
+                const offsetPercentage = (baseWidth / groupSize) * index;
+                
+                result.push({
+                    task: taskRange.task,
+                    offset: offsetPercentage,
+                    width: taskWidth,
+                    groupSize: groupSize
+                });
             });
         }
         
@@ -975,8 +1010,6 @@ export class TimelineRenderer extends MarkdownRenderChild {
      * 处理任务更新
      */
     private handleTaskUpdate(oldLine: string, newLine: string): void {
-        console.log('Task updated:', { oldLine, newLine });
-        
         if (!this.currentContent) return;
         
         // 更新内容中的任务行
@@ -987,7 +1020,6 @@ export class TimelineRenderer extends MarkdownRenderChild {
         
         // 重新渲染以反映更改
         this.render(updatedContent);
-        
         // 触发内容更新事件（如果需要保存到文件）
         this.containerEl.dispatchEvent(new CustomEvent('timeline-content-updated', {
             detail: { oldContent: this.currentContent, newContent: updatedContent, oldLine, newLine }
@@ -995,13 +1027,23 @@ export class TimelineRenderer extends MarkdownRenderChild {
     }
 
     /**
-     * 为任务元素添加点击编辑功能
+     * 为任务内容区域添加点击编辑功能
      */
     private addTaskEditFunctionality(taskElement: HTMLElement, task: ParsedTask): void {
-        taskElement.addEventListener('click', (event) => {
+        // 查找任务内容区域
+        const taskContent = taskElement.querySelector('.timeline-task-content') as HTMLElement;
+        if (!taskContent) return;
+        
+        taskContent.addEventListener('click', (event) => {
             // 防止拖拽时触发编辑
             if (taskElement.classList.contains('dragging')) {
                 return;
+            }
+            
+            // 检查点击的是否是任务点（避免冲突）
+            const target = event.target as HTMLElement;
+            if (target.classList.contains('timeline-task-dot') || target.classList.contains('clickable-toggle')) {
+                return; // 如果点击的是任务点，不触发编辑
             }
             
             event.preventDefault();
@@ -1011,8 +1053,33 @@ export class TimelineRenderer extends MarkdownRenderChild {
         });
         
         // 添加视觉提示
-        taskElement.style.cursor = 'pointer';
-        taskElement.title = '点击编辑任务';
+        taskContent.style.cursor = 'pointer';
+        taskContent.title = '点击编辑任务';
+    }
+
+    /**
+     * 切换任务完成状态
+     */
+    private toggleTaskCompletion(task: ParsedTask): void {
+        // 构建新的任务行，切换完成状态
+        let newTaskLine = task.originalLine;
+        
+        if (task.completed) {
+            // 从完成变为未完成: [x] -> [ ]
+            newTaskLine = newTaskLine.replace(/^(\s*)-\s*\[x\]/i, '$1- [ ]');
+        } else {
+            // 从未完成变为完成: [ ] -> [x]
+            newTaskLine = newTaskLine.replace(/^(\s*)-\s*\[\s*\]/i, '$1- [x]');
+        }
+        
+        // 更新任务状态
+        task.completed = !task.completed;
+        
+        // 更新内容
+        this.handleTaskUpdate(task.originalLine, newTaskLine);
+        
+        // 更新任务的原始行引用
+        task.originalLine = newTaskLine;
     }
 
     /**

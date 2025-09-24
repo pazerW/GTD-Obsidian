@@ -128,7 +128,6 @@ export class TimelineDragHandler {
      * 处理任务拖拽
      */
     private handleTaskDrop(data: DragEventData, newTime: Date): void {
-        console.log('Task dropped:', data.taskName, 'at', newTime);
         
         // 调整到最近的间隔时间
         const adjustedTime = TimeParser.roundToInterval(newTime, this.intervalMinutes);

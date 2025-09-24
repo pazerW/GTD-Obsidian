@@ -24,8 +24,7 @@ const manifest = JSON.parse(fs.readFileSync("./manifest.json", "utf-8"));
 const pluginId = manifest.id;
 
 // 路径模板
-// const devPluginPath = `./test_vault/.obsidian/plugins/${pluginId}`;
-const devPluginPath = `/Volumes/file/00_视频工作/04_直播文件/.obsidian/plugins/${pluginId}`;
+const devPluginPath = `test_vault/.obsidian/plugins/${pluginId}`;
 const buildPluginPath = `/Volumes/file/00_视频工作/04_直播文件/.obsidian/plugins/${pluginId}`;
 // const buildPluginPath = `/Users/wang/Library/Mobile Documents/iCloud~md~obsidian/Documents/Base/.obsidian/plugins/${pluginId}`;
 
@@ -66,6 +65,12 @@ esbuild
 				dest: prod
 					? `${buildPluginPath}/manifest.json`
 					: `${devPluginPath}/manifest.json`,
+			}),
+			copyStaticFiles({
+				src: "./styles.css",
+				dest: prod
+					? `${buildPluginPath}/styles.css`
+					: `${devPluginPath}/styles.css`,
 			}),
 			copyStaticFiles({
 				src: "./dist/main.js",

@@ -1,7 +1,7 @@
 {
 	"id": "obsidian-gtd-plugin",
 	"name": "Obsidian GTD Plugin",
-	"version": "1.0.0",
+	"version": "1.1.0",
 	"minAppVersion": "0.15.0",
 	"description": "A plugin based on OmniFocus, also serves as a data source for other software.",
 	"author": "PazerStudio",

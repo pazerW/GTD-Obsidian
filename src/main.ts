@@ -4,25 +4,33 @@ import { DatePickerModal } from './modal/DatePickerModal';
 import { generateSecureKey,verifySecureKey } from './tools/secureKey';
 import { Task } from './model/Task';
 import { TaskFormatter } from './model/TaskFormatter';
+import { TimelineRenderer } from './renderer/TimelineRenderer';
 import * as url from 'url';
 import * as http from 'http';
 // Remember to rename these classes and interfaces!
 
 interface GTDPluginSettings {
 	savePath: string;
+	timelineLayout: 'vertical';
+	timelineIntervalMinutes: number;
+	enableTimelineDragging: boolean;
 }
 
 const DEFAULT_SETTINGS: GTDPluginSettings = {
 	savePath: 'GTDPluginSettings_savePath',
+	timelineLayout: 'vertical',
+	timelineIntervalMinutes: 30,
+	enableTimelineDragging: false,
 }
 
-const PLUGIN_VERSION = '1.0.6.1';
+const PLUGIN_VERSION = '1.1.0.5';
 const PLUGIN_NAME = 'GTD-Obsidian';
 const TODAY_TAG = 'Today';
 
 export default class GTDPlugin extends Plugin {
 	settings: GTDPluginSettings;
 	_lastToken?: string;
+	private timelineRenderers: Set<TimelineRenderer> = new Set();
 
 	async onload() {
 		await this.loadSettings();
@@ -45,6 +53,38 @@ export default class GTDPlugin extends Plugin {
 		// Perform additional things with the ribbon
 		ribbonIconEl.addClass('obsidian-gtd-plugin-class');
 		this.addSettingTab(new SettingTab(this.app, this));
+
+		// 注册 timeline 代码块处理器
+		this.registerMarkdownCodeBlockProcessor('timeline', (source, el, ctx) => {
+			const options = {
+				layout: this.settings.timelineLayout,
+				intervalMinutes: this.settings.timelineIntervalMinutes,
+				showTimeSlots: true,
+				enableDragging: this.settings.enableTimelineDragging
+			};
+			const renderer = new TimelineRenderer(el, this.app, options);
+			
+			// 将渲染器添加到集合中以便管理
+			this.timelineRenderers.add(renderer);
+			
+			// 监听timeline内容更新事件
+			el.addEventListener('timeline-content-updated', (event: CustomEvent) => {
+				this.handleTimelineContentUpdate(event.detail, ctx);
+			});
+			
+			console.log('Rendering timeline with source:', source, 'options:', options);
+			ctx.addChild(renderer);
+			
+			// 在渲染器被移除时从集合中删除
+			renderer.register(() => {
+				this.timelineRenderers.delete(renderer);
+			});
+			
+			renderer.render(source).catch(error => {
+				console.error('Timeline rendering error:', error);
+				el.createDiv('timeline-error').setText('时间轴渲染失败: ' + error.message);
+			});
+		});
 	}
 
 	onunload() {
@@ -66,6 +106,39 @@ export default class GTDPlugin extends Plugin {
 
 	async saveSettings() {
 		await this.saveData(this.settings);
+		// 设置保存后立即刷新所有时间轴
+		this.refreshAllTimelines();
+	}
+
+	/**
+	 * 刷新所有时间轴渲染器
+	 */
+	refreshAllTimelines() {
+		for (const renderer of this.timelineRenderers) {
+			renderer.updateOptions({
+				layout: this.settings.timelineLayout,
+				intervalMinutes: this.settings.timelineIntervalMinutes,
+				showTimeSlots: true,
+				enableDragging: this.settings.enableTimelineDragging
+			});
+		}
+	}
+
+	/**
+	 * 处理timeline内容更新
+	 */
+	handleTimelineContentUpdate(detail: { oldContent: string; newContent: string; oldLine: string; newLine: string }, ctx: unknown) {
+		console.log('Timeline content updated:', detail);
+		
+		// 这里可以实现将更新的内容保存回原文件的逻辑
+		// 由于timeline是嵌入在markdown文件中的代码块，
+		// 我们需要通过ctx获取原文件信息并更新内容
+		
+		// 暂时只记录更新，实际的文件保存需要更复杂的实现
+		// 因为需要定位到原始的markdown文件和代码块位置
+		
+		// 可以通过事件通知用户内容已更改
+		new Notice(`任务已更新: ${detail.oldLine} → ${detail.newLine}`);
 	}
 
 	handleRibbonClick() {
@@ -142,9 +215,12 @@ export default class GTDPlugin extends Plugin {
 				res.end('GTDPlugin HTTP Server is running.\n');
 			});
 		});
-		server.listen(port, () => {
-			console.log(`HTTP server listening on port ${port}`);
-		});
+		const prod = process.env.NODE_ENV === "production";
+		if (prod) {
+			server.listen(port, () => {
+				console.log(`HTTP server listening on port ${port}`);
+			});
+		}
 		this.register(() => server.close());
 	}
 
@@ -377,6 +453,8 @@ class SettingTab extends PluginSettingTab {
 		const {containerEl} = this;
 
 		containerEl.empty();
+		
+		containerEl.createEl('h2', {text: 'GTD插件设置'});
 
 		// 获取库内所有文件夹路径
 		const folders = this.app.vault.getAllLoadedFiles()
@@ -398,6 +476,36 @@ class SettingTab extends PluginSettingTab {
 				dropdown.setValue(this.plugin.settings.savePath);
 				dropdown.onChange(async (value) => {
 					this.plugin.settings.savePath = value;
+					await this.plugin.saveSettings();
+				});
+			});
+
+		// 时间轴设置分组
+		containerEl.createEl('h3', {text: '时间轴设置'});
+
+
+
+		new Setting(containerEl)
+			.setName('时间间隔')
+			.setDesc('时间轴显示的时间间隔（分钟）')
+			.addDropdown(dropdown => {
+				dropdown.addOption('15', '15分钟');
+				dropdown.addOption('30', '30分钟');
+				dropdown.addOption('60', '60分钟');
+				dropdown.setValue(this.plugin.settings.timelineIntervalMinutes.toString());
+				dropdown.onChange(async (value) => {
+					this.plugin.settings.timelineIntervalMinutes = parseInt(value, 10);
+					await this.plugin.saveSettings();
+				});
+			});
+
+		new Setting(containerEl)
+			.setName('启用拖拽功能')
+			.setDesc('允许拖拽任务来修改时间')
+			.addToggle(toggle => {
+				toggle.setValue(this.plugin.settings.enableTimelineDragging);
+				toggle.onChange(async (value) => {
+					this.plugin.settings.enableTimelineDragging = value;
 					await this.plugin.saveSettings();
 				});
 			});

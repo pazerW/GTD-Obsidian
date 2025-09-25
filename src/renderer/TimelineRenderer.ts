@@ -264,6 +264,32 @@ export class TimelineRenderer extends MarkdownRenderChild {
 
 
     /**
+     * 缓存的基础左边距值，避免重复计算
+     */
+    private cachedBaseLeft: number | null = null;
+    
+    /**
+     * 缓存的时间槽偏移值，避免重复计算
+     */
+    private cachedSlotOffsets: number[] | null = null;
+
+    /**
+     * 获取时间标签的基础左边距
+     */
+    private getBaseLeft(container: HTMLElement): number {
+        if (this.cachedBaseLeft !== null) {
+            return this.cachedBaseLeft;
+        }
+
+        // 根据调试信息，时间标签宽度为80px，且与覆盖层左对齐
+        // 所以任务应该从80px位置开始（时间标签宽度）
+        // 但还需要考虑padding-right和border的空间
+        this.cachedBaseLeft = 97; // 80px (width) + 15px (padding-right) + 2px (border-right)
+        
+        return this.cachedBaseLeft;
+    }
+
+    /**
      * 创建跨越时间段的完整竖向任务元素
      */
     private createVerticalTaskWhole(
@@ -289,15 +315,15 @@ export class TimelineRenderer extends MarkdownRenderChild {
         }
         
         // 计算任务在时间轴中的位置和高度
-        const taskPosition = this.calculateVerticalTaskPosition(taskStartTime, taskEndTime, timeSlots);
+        const taskPosition = this.calculateVerticalTaskPosition(taskStartTime, taskEndTime, timeSlots, container);
         if (!taskPosition) return;
         
         // 创建任务元素
         const taskElement = container.createDiv('timeline-task-vertical-whole');
         taskElement.addClass(task.completed ? 'completed' : 'pending');
         
-        // 计算左边距和宽度（考虑重叠偏移）
-        const baseLeft = 95; // 基础左边距（时间标签之后）
+        // 使用缓存的基础左边距计算
+        const baseLeft = this.getBaseLeft(container);
         
         // 获取容器宽度，使用多种方法确保准确性
         let totalContainerWidth = container.clientWidth;
@@ -583,48 +609,23 @@ export class TimelineRenderer extends MarkdownRenderChild {
         // 合并重叠的时间范围
         const mergedRanges = this.mergeTimeRanges(taskTimeRanges);
         
-        // 检查时间范围是否分散过大，如果跨度超过12小时则只显示主要时间段
-        const allRangesStart = new Date(Math.min(...mergedRanges.map(r => r.start.getTime())));
-        const allRangesEnd = new Date(Math.max(...mergedRanges.map(r => r.end.getTime())));
-        const totalSpan = (allRangesEnd.getTime() - allRangesStart.getTime()) / (1000 * 60 * 60); // 小时
-        
-        
-        let rangesForSlots = mergedRanges;
-        if (totalSpan > 12) {
-            // 如果总跨度超过12小时，优先显示晚间和跨夜任务
-            const eveningRanges = mergedRanges.filter(range => range.start.getHours() >= 18 || range.end.getHours() <= 6);
-            if (eveningRanges.length > 0) {
-                rangesForSlots = eveningRanges;
-            }
-        }
+        // 暂时禁用智能分组，显示所有任务时间段
+        // 这样确保所有任务都能在正确的时间轴位置显示  
+        const rangesForSlots = mergedRanges;
         
         // 为每个选定的时间范围生成时间槽，并添加缓冲时间
         const allSlots: Date[] = [];
         const intervalMs = this.options.intervalMinutes * 60 * 1000;
         
         for (const range of rangesForSlots) {
-            // 向前扩展一个时间间隔作为缓冲，但要智能限制
+            // 简化逻辑：直接使用任务的实际时间范围，只添加最小缓冲
             const bufferStart = new Date(range.start.getTime() - intervalMs);
-            
-            // 计算合理的最早开始时间：任务开始时间前2小时，但不早于6:00
-            const taskStartHour = range.start.getHours();
-            const reasonableEarliestHour = Math.max(6, taskStartHour - 2);
-
-            
-            const reasonableStart = new Date(range.start.getFullYear(), range.start.getMonth(), range.start.getDate(), reasonableEarliestHour, 0, 0);
-            // 使用更早的时间作为实际开始时间（reasonableStart vs bufferStart）
-            const actualStart = new Date(Math.min(bufferStart.getTime(), reasonableStart.getTime()));
- 
-            
-            // 向后扩展一个时间间隔作为缓冲（可延伸到第二天凌晨1点）
             const bufferEnd = new Date(range.end.getTime() + intervalMs);
-            const nextDayLimit = new Date(range.end.getFullYear(), range.end.getMonth(), range.end.getDate() + 1, 1, 0, 0);
-            const actualEnd = new Date(Math.min(bufferEnd.getTime(), nextDayLimit.getTime()));
             
-
             
             // 生成这个范围内的时间槽
-            const rangeSlots = this.generateTimeSlotsForRange(actualStart, actualEnd);
+            const rangeSlots = this.generateTimeSlotsForRange(bufferStart, bufferEnd);
+            
             
             // 合并到总的时间槽列表中（避免重复）
             for (const slot of rangeSlots) {
@@ -636,7 +637,6 @@ export class TimelineRenderer extends MarkdownRenderChild {
         
         // 按时间排序
         allSlots.sort((a, b) => a.getTime() - b.getTime());
-
         return allSlots;
     }
 
@@ -767,14 +767,55 @@ export class TimelineRenderer extends MarkdownRenderChild {
     }
 
     /**
-     * 计算竖向任务在时间轴中的位置和高度
+     * 计算竖向任务在时间轴中的位置和高度，基于实际可见的时间槽
      */
-    private calculateVerticalTaskPosition(startTime: Date, endTime: Date, timeSlots: Date[]): { top: number, height: number } | null {
+    private calculateVerticalTaskPosition(startTime: Date, endTime: Date, timeSlots: Date[], container?: HTMLElement): { top: number, height: number } | null {
         if (timeSlots.length === 0) return null;
         
         const firstSlot = timeSlots[0];
         const slotDuration = this.options.intervalMinutes * 60 * 1000; // 转换为毫秒
         const slotHeight = 60; // 每个时间槽的高度（像素）
+        
+        // 尝试获取实际可见的时间槽来进行更精确的位置计算
+        let visibleSlotOffsets: number[] = [];
+        const slotDetails: Array<{time: string, height: number, offset: number}> = [];
+        
+        if (container && !this.cachedSlotOffsets) {
+            const timelineContainer = container.closest('.timeline-vertical');
+            const visibleSlots = timelineContainer?.querySelectorAll('.timeline-slot');
+            
+            if (visibleSlots && visibleSlots.length > 0) {
+                // 计算每个可见时间槽的累计偏移
+                let cumulativeOffset = 0;
+                visibleSlotOffsets = [];
+                
+                for (let i = 0; i < visibleSlots.length; i++) {
+                    const slot = visibleSlots[i] as HTMLElement;
+                    const timeLabel = slot.querySelector('.timeline-time-label');
+                    const timeText = timeLabel?.textContent || `Slot ${i}`;
+                    
+                    visibleSlotOffsets.push(cumulativeOffset);
+                    
+                    // 检查时间槽是否被隐藏或高度为0
+                    const rect = slot.getBoundingClientRect();
+                    const computedStyle = window.getComputedStyle(slot);
+                    const actualHeight = rect.height || parseInt(computedStyle.height) || slotHeight;
+                    
+                    slotDetails.push({
+                        time: timeText,
+                        height: actualHeight,
+                        offset: cumulativeOffset
+                    });
+                    
+                    cumulativeOffset += actualHeight;
+                }
+                
+                // 缓存计算结果
+                this.cachedSlotOffsets = visibleSlotOffsets;
+            }
+        } else if (this.cachedSlotOffsets) {
+            visibleSlotOffsets = this.cachedSlotOffsets;
+        }
         
         // 计算任务开始位置（相对于第一个时间槽）
         const startOffset = startTime.getTime() - firstSlot.getTime();
@@ -786,20 +827,63 @@ export class TimelineRenderer extends MarkdownRenderChild {
         const endSlotIndex = Math.floor(endOffset / slotDuration);
         const endPositionInSlot = (endOffset % slotDuration) / slotDuration;
         
-        // 计算顶部位置
-        const top = startSlotIndex * slotHeight + startPositionInSlot * slotHeight;
+        // 修复：使用实际时间槽序列而不是假设的连续索引
+        let top: number;
+        let height: number;
         
-        // 计算高度
-        const totalSlots = endSlotIndex - startSlotIndex;
-        const height = totalSlots * slotHeight + (endPositionInSlot - startPositionInSlot) * slotHeight;
-        
-        // 只在位置异常时输出调试信息
-        // if (top > 1000) {
-        //     console.warn('Unusual task position detected:');
-        //     console.warn('  Task time:', startTime.toLocaleTimeString(), '-', endTime.toLocaleTimeString());
-        //     console.warn('  First slot:', firstSlot.toLocaleTimeString());
-        //     console.warn('  Start slot index:', startSlotIndex, 'Calculated top:', top);
-        // }
+        if (visibleSlotOffsets.length > 0) {
+            // 在实际时间槽中查找最接近的时间槽
+            let actualStartSlotIndex = -1;
+            let actualEndSlotIndex = -1;
+            
+            // 查找任务开始时间对应的实际时间槽索引
+            for (let i = 0; i < timeSlots.length; i++) {
+                const slotTime = timeSlots[i].getTime();
+                const nextSlotTime = i < timeSlots.length - 1 ? timeSlots[i + 1].getTime() : slotTime + slotDuration;
+                
+                if (startTime.getTime() >= slotTime && startTime.getTime() < nextSlotTime) {
+                    actualStartSlotIndex = i;
+                    break;
+                }
+            }
+            
+            // 查找任务结束时间对应的实际时间槽索引
+            for (let i = 0; i < timeSlots.length; i++) {
+                const slotTime = timeSlots[i].getTime();
+                const nextSlotTime = i < timeSlots.length - 1 ? timeSlots[i + 1].getTime() : slotTime + slotDuration;
+                
+                if (endTime.getTime() >= slotTime && endTime.getTime() < nextSlotTime) {
+                    actualEndSlotIndex = i;
+                    break;
+                }
+            }
+            
+            if (actualStartSlotIndex >= 0 && actualStartSlotIndex < visibleSlotOffsets.length) {
+                const slotStartTime = timeSlots[actualStartSlotIndex].getTime();
+                const positionInSlot = (startTime.getTime() - slotStartTime) / slotDuration;
+                top = visibleSlotOffsets[actualStartSlotIndex] + positionInSlot * slotHeight;
+                
+                if (actualEndSlotIndex >= 0 && actualEndSlotIndex < visibleSlotOffsets.length) {
+                    const endSlotStartTime = timeSlots[actualEndSlotIndex].getTime();
+                    const endPositionInSlot = (endTime.getTime() - endSlotStartTime) / slotDuration;
+                    const endTop = visibleSlotOffsets[actualEndSlotIndex] + endPositionInSlot * slotHeight;
+                    height = Math.max(20, endTop - top);
+                } else {
+                    height = slotHeight; // 默认一个时间槽的高度
+                }
+            } else {
+                // 回退到原始计算
+                top = startSlotIndex * slotHeight + startPositionInSlot * slotHeight;
+                const totalSlots = endSlotIndex - startSlotIndex;
+                height = totalSlots * slotHeight + (endPositionInSlot - startPositionInSlot) * slotHeight;
+            }
+        } else {
+            // 回退到原始计算方法
+            top = startSlotIndex * slotHeight + startPositionInSlot * slotHeight;
+            const totalSlots = endSlotIndex - startSlotIndex;
+            height = totalSlots * slotHeight + (endPositionInSlot - startPositionInSlot) * slotHeight;
+        }
+
         
         return {
             top: Math.max(0, top),

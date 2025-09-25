@@ -126,9 +126,8 @@ export class TaskFormatter {
 			// 结束时间是，date，开始时间是 结束时间 - 预计时间
 			const startDate = new Date(date.getTime() - estimatedMinutes * 60000);
 			parts.push(`@${startDate.getHours().toString().padStart(2, '0')}:${startDate.getMinutes().toString().padStart(2, '0')}-${date.getHours().toString().padStart(2, '0')}:${date.getMinutes().toString().padStart(2, '0')}`);
-	
 		}
-
+		parts.push(`#${task.id}`);
 		// if (task.note && !weekGoals) parts.push(`📔 ${task.note.replace(/\r?\n/g, ' ')}`);
 		return parts.join(' ');
 	}

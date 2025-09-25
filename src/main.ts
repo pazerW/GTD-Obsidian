@@ -23,7 +23,7 @@ const DEFAULT_SETTINGS: GTDPluginSettings = {
 	enableTimelineDragging: true,
 }
 
-const PLUGIN_VERSION = '1.1.0.5';
+const PLUGIN_VERSION = '1.1.0.6';
 const PLUGIN_NAME = 'GTD-Obsidian';
 const TODAY_TAG = 'Today';
 
@@ -43,7 +43,6 @@ export default class GTDPlugin extends Plugin {
 
 		this.registerObsidianProtocolHandler("obsidian_gtd_sync_task", async (e) => {
 			new Notice('开始同步任务');
-			console.log('开始同步任务');
 			if (!e || !e.date || !/^\d{4}-\d{2}-\d{2}$/.test(e.date)) {
 				console.error('Invalid date format or missing data');
 				return;
@@ -127,8 +126,6 @@ export default class GTDPlugin extends Plugin {
 	 * 处理timeline内容更新
 	 */
 	async handleTimelineContentUpdate(detail: { oldContent: string; newContent: string; oldLine: string; newLine: string }, ctx: MarkdownPostProcessorContext) {
-		console.log('Timeline content updated:', detail);
-		
 		try {
 			// 尝试从上下文中获取文件路径
 			const sourcePath = ctx?.sourcePath;

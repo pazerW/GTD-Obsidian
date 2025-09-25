@@ -38,6 +38,8 @@ export class TimelineRenderer extends MarkdownRenderChild {
     private options: TimelineOptions;
     private dragHandler?: TimelineDragHandler;
     private currentContent?: string;
+    private updateTimer?: number;
+    private currentTimeIndicator?: HTMLElement;
 
     constructor(container: HTMLElement, app: App, options?: Partial<TimelineOptions>) {
         super(container);
@@ -223,6 +225,9 @@ export class TimelineRenderer extends MarkdownRenderChild {
                     slotDiv.createDiv('timeline-slot-tasks');
                 }
                 
+                // 添加当前时间指示器
+                this.addCurrentTimeIndicator(timelineGrid, timeSlots);
+                
                 // 创建任务覆盖层，让任务可以跨越时间槽
                 const tasksOverlay = timeline.createDiv('timeline-tasks-overlay');
                 
@@ -241,8 +246,7 @@ export class TimelineRenderer extends MarkdownRenderChild {
                     }
                 });
                 
-                // 添加当前时间线
-                this.createCurrentTimeLine(tasksOverlay, timeSlots);
+
             }
         }
         
@@ -947,26 +951,6 @@ export class TimelineRenderer extends MarkdownRenderChild {
         // 垂直布局不支持调整大小功能
     }
 
-    /**
-     * 创建当前时间线
-     */
-    private createCurrentTimeLine(container: HTMLElement, timeSlots: Date[]): void {
-        const now = new Date();
-        
-        const timelinePosition = this.calculateCurrentTimePosition(now, timeSlots);
-        if (timelinePosition) {
-            const currentTimeLine = container.createDiv('current-time-line-vertical');
-            currentTimeLine.style.position = 'absolute';
-            currentTimeLine.style.top = `${timelinePosition.position}px`;
-            currentTimeLine.style.left = '0';
-            currentTimeLine.style.right = '0';
-            currentTimeLine.style.zIndex = '20';
-            
-            // 添加时间标签
-            const timeLabel = currentTimeLine.createDiv('current-time-label');
-            timeLabel.setText(`现在 ${TimeParser.formatTime(now)}`);
-        }
-    }
 
     /**
      * 计算当前时间在时间轴中的位置
@@ -1095,19 +1079,54 @@ export class TimelineRenderer extends MarkdownRenderChild {
      * 处理任务更新
      */
     private handleTaskUpdate(oldLine: string, newLine: string): void {
-        if (!this.currentContent) return;
+        console.log('TimelineRenderer.handleTaskUpdate called:', { oldLine, newLine });
+        
+        if (!this.currentContent) {
+            console.warn('No current content available');
+            return;
+        }
+        
+        // 保存原始内容
+        const oldContent = this.currentContent;
+        
+        // 检查 oldLine 是否在 currentContent 中存在
+        const lineExists = this.currentContent.includes(oldLine);
+        console.log('Does oldLine exist in currentContent?', lineExists);
+        
+        if (!lineExists) {
+            console.warn('oldLine not found in currentContent. Searching for similar lines...');
+            const lines = this.currentContent.split('\n');
+            lines.forEach((line, index) => {
+                if (line.includes('建身&&跑步') || line.includes('#jhFv9AJqnNX.235.37')) {
+                    console.log(`Similar line found at ${index}:`, line);
+                }
+            });
+        }
         
         // 更新内容中的任务行
         const updatedContent = this.currentContent.replace(oldLine, newLine);
         
+        console.log('Replace operation result:', {
+            contentChanged: updatedContent !== oldContent,
+            oldContentLength: oldContent.length,
+            newContentLength: updatedContent.length
+        });
+        
         // 保存更新后的内容
         this.currentContent = updatedContent;
         
+        // 强制清空容器以确保完全重新渲染
+        this.containerEl.empty();
+        
         // 重新渲染以反映更改
         this.render(updatedContent);
+        
+        console.log('Timeline fully re-rendered after task update');
+        
         // 触发内容更新事件（如果需要保存到文件）
+        console.log('Dispatching timeline-content-updated event');
         this.containerEl.dispatchEvent(new CustomEvent('timeline-content-updated', {
-            detail: { oldContent: this.currentContent, newContent: updatedContent, oldLine, newLine }
+            detail: { oldContent, newContent: updatedContent, oldLine, newLine }
         }));
     }
 
@@ -1241,5 +1260,134 @@ export class TimelineRenderer extends MarkdownRenderChild {
             return `${hours}h`;
         }
         return `${hours}h${remainingMinutes}min`;
+    }
+
+    /**
+     * 添加当前时间指示器
+     */
+    private addCurrentTimeIndicator(timelineGrid: HTMLElement, timeSlots: Date[]): void {
+        const now = new Date();
+        
+        // 找到当前时间应该在哪个位置
+        const position = this.calculateTimePosition(now, timeSlots);
+        if (position < 0) return; // 当前时间不在显示范围内
+        
+        // 创建当前时间指示器
+        this.currentTimeIndicator = timelineGrid.createDiv('timeline-current-time');
+        this.currentTimeIndicator.style.position = 'absolute';
+        this.currentTimeIndicator.style.top = `${position}px`;
+        this.currentTimeIndicator.style.left = '0';
+        this.currentTimeIndicator.style.right = '0';
+        this.currentTimeIndicator.style.height = '2px';
+        this.currentTimeIndicator.style.backgroundColor = '#ff4444';
+        this.currentTimeIndicator.style.zIndex = '100';
+        this.currentTimeIndicator.style.pointerEvents = 'none';
+        
+        // 添加时间标签
+        const timeLabel = this.currentTimeIndicator.createSpan('current-time-label');
+        timeLabel.setText(`现在 ${TimeParser.formatTime(now)}`);
+        timeLabel.style.position = 'absolute';
+        timeLabel.style.right = '10px';
+        timeLabel.style.top = '-10px';
+        timeLabel.style.fontSize = '12px';
+        timeLabel.style.color = '#ff4444';
+        timeLabel.style.backgroundColor = 'var(--background-primary)';
+        timeLabel.style.padding = '2px 6px';
+        timeLabel.style.borderRadius = '3px';
+        
+        // 启动定时更新
+        this.startTimelineUpdates();
+    }
+
+    /**
+     * 计算时间在时间轴上的位置
+     */
+    private calculateTimePosition(time: Date, timeSlots: Date[]): number {
+        if (timeSlots.length === 0) return -1;
+        
+        const startTime = timeSlots[0];
+        const endTime = timeSlots[timeSlots.length - 1];
+        
+        // 如果时间不在范围内，返回-1
+        if (time < startTime || time > endTime) return -1;
+        
+        // 计算相对位置
+        const totalMinutes = (endTime.getTime() - startTime.getTime()) / (1000 * 60);
+        const currentMinutes = (time.getTime() - startTime.getTime()) / (1000 * 60);
+        
+        // 假设每个时间槽高度为60px
+        const slotHeight = 60;
+        const totalHeight = timeSlots.length * slotHeight;
+        
+        return (currentMinutes / totalMinutes) * totalHeight;
+    }
+
+    /**
+     * 启动时间轴定时更新
+     */
+    private startTimelineUpdates(): void {
+        // 清除现有定时器
+        if (this.updateTimer) {
+            window.clearInterval(this.updateTimer);
+        }
+        
+        // 每分钟更新一次
+        this.updateTimer = window.setInterval(() => {
+            this.updateCurrentTimeIndicator();
+        }, 60000); // 60秒
+    }
+
+    /**
+     * 更新当前时间指示器位置
+     */
+    private updateCurrentTimeIndicator(): void {
+        if (!this.currentTimeIndicator) return;
+        
+        const now = new Date();
+        const timelineGrid = this.currentTimeIndicator.parentElement;
+        if (!timelineGrid) return;
+        
+        // 获取当前时间槽
+        const timeSlots = this.getCurrentTimeSlots();
+        const position = this.calculateTimePosition(now, timeSlots);
+        
+        if (position >= 0) {
+            this.currentTimeIndicator.style.top = `${position}px`;
+            const timeLabel = this.currentTimeIndicator.querySelector('.current-time-label') as HTMLElement;
+            if (timeLabel) {
+                timeLabel.setText(`现在 ${TimeParser.formatTime(now)}`);
+            }
+            this.currentTimeIndicator.style.display = 'block';
+        } else {
+            // 当前时间不在显示范围内，隐藏指示器
+            this.currentTimeIndicator.style.display = 'none';
+        }
+    }
+
+    /**
+     * 获取当前显示的时间槽
+     */
+    private getCurrentTimeSlots(): Date[] {
+        // 这里需要根据当前显示的时间轴重新计算时间槽
+        // 简化实现：从当前内容重新解析任务并生成时间槽
+        if (!this.currentContent) return [];
+        
+        const tasks = this.parseTasksFromContent(this.currentContent);
+        const tasksWithTime = tasks.filter(task => task.startTime || task.dueTime);
+        
+        return this.options.dynamicTimeSlots 
+            ? this.generateDynamicTimeSlots(tasksWithTime)
+            : this.generateTraditionalTimeSlots(tasksWithTime);
+    }
+
+    /**
+     * 清理定时器
+     */
+    onunload(): void {
+        if (this.updateTimer) {
+            window.clearInterval(this.updateTimer);
+            this.updateTimer = undefined;
+        }
+        super.onunload();
     }
 }

@@ -841,3 +841,43 @@ If your plugin does not need CSS, delete this file.
 }
 
 /* 移除了整体任务元素的点击样式，现在只有任务内容和任务点可以点击 */
+
+/* 当前时间指示器样式 */
+.timeline-current-time {
+    position: absolute !important;
+    left: 0 !important;
+    right: 0 !important;
+    height: 2px !important;
+    background: linear-gradient(90deg, #ff4444, #ff6666) !important;
+    z-index: 100 !important;
+    pointer-events: none !important;
+    box-shadow: 0 0 4px rgba(255, 68, 68, 0.5) !important;
+}
+
+.timeline-current-time::before {
+    content: '';
+    position: absolute;
+    left: -6px;
+    top: -4px;
+    width: 10px;
+    height: 10px;
+    background: #ff4444;
+    border-radius: 50%;
+    border: 2px solid var(--background-primary);
+}
+
+.current-time-label {
+    position: absolute !important;
+    right: 10px !important;
+    top: -12px !important;
+    font-size: 11px !important;
+    font-weight: 600 !important;
+    color: #ff4444 !important;
+    background: var(--background-primary) !important;
+    padding: 2px 8px !important;
+    border-radius: 12px !important;
+    border: 1px solid #ff4444 !important;
+    white-space: nowrap !important;
+    box-shadow: 0 2px 4px rgba(0, 0, 0, 0.1) !important;
+}
+

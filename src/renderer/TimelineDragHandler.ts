@@ -128,16 +128,22 @@ export class TimelineDragHandler {
      * 处理任务拖拽
      */
     private handleTaskDrop(data: DragEventData, newTime: Date): void {
+        console.log('TimelineDragHandler.handleTaskDrop called:', { originalLine: data.originalLine, newTime });
         
         // 调整到最近的间隔时间
         const adjustedTime = TimeParser.roundToInterval(newTime, this.intervalMinutes);
+        console.log('Adjusted time:', adjustedTime);
         
         // 生成新的任务行
         const newLine = this.generateUpdatedTaskLine(data, adjustedTime);
+        console.log('Generated new line:', newLine);
         
         // 触发更新回调
         if (this.onTaskUpdate) {
+            console.log('Calling onTaskUpdate callback');
             this.onTaskUpdate(data.originalLine, newLine);
+        } else {
+            console.warn('No onTaskUpdate callback available');
         }
     }
 
@@ -145,30 +151,43 @@ export class TimelineDragHandler {
      * 生成更新后的任务行
      */
     private generateUpdatedTaskLine(data: DragEventData, newStartTime: Date): string {
-        const { taskName, originalLine, duration } = data;
-        
-        // 提取任务状态
-        const completedMatch = originalLine.match(/^-\s*\[([ x])\]/);
-        const completed = completedMatch ? completedMatch[1] : ' ';
+        const { originalLine, duration } = data;
         
         // 生成新的时间字符串
-        let timeStr = `@${TimeParser.formatTime(newStartTime)}`;
+        let newTimeStr = `@${TimeParser.formatTime(newStartTime)}`;
         
         if (duration && duration > 0) {
             if (duration >= 60 && duration % 60 === 0) {
                 // 整小时
-                timeStr += `+${duration / 60}h`;
+                newTimeStr += `+${duration / 60}h`;
             } else {
                 // 分钟
-                timeStr += `+${duration}min`;
+                newTimeStr += `+${duration}min`;
             }
         }
         
-        // 检查是否有截止时间
-        const dueMatch = originalLine.match(/due:(\\S+)/);
-        const dueStr = dueMatch ? ` ${dueMatch[0]}` : '';
+        // 使用正则表达式替换原始行中最后一个时间标记（通常是拖拽的那个）
+        // 匹配模式：@时间 或 @时间+持续时间 或 @时间-时间
+        const timeMarkers = originalLine.match(/@\d{1,2}:\d{2}(?:[-+]\d{1,2}:\d{2}|[+-]\d+(?:h|min))?/g);
         
-        return `- [${completed}] ${taskName} ${timeStr}${dueStr}`;
+        let updatedLine = originalLine;
+        if (timeMarkers && timeMarkers.length > 0) {
+            // 获取最后一个时间标记（这通常是我们拖拽的那个）
+            const lastTimeMarker = timeMarkers[timeMarkers.length - 1];
+            const lastIndex = originalLine.lastIndexOf(lastTimeMarker);
+            
+            // 只替换最后一个时间标记
+            updatedLine = originalLine.substring(0, lastIndex) + 
+                         newTimeStr + 
+                         originalLine.substring(lastIndex + lastTimeMarker.length);
+        }
+        
+        // 如果没有找到可替换的时间标记，就在行末添加新的时间
+        if (!updatedLine.includes(newTimeStr) && updatedLine === originalLine) {
+            updatedLine = `${originalLine} ${newTimeStr}`;
+        }
+        
+        return updatedLine;
     }
 
     /**

@@ -1,4 +1,4 @@
-import { App, Notice, Plugin, PluginSettingTab, Setting, TFolder, MarkdownPostProcessorContext } from 'obsidian';
+import { App, Notice, Plugin, PluginSettingTab, Setting, TFolder, MarkdownPostProcessorContext, MarkdownView, TFile } from 'obsidian';
 
 import { DatePickerModal } from './modal/DatePickerModal';
 import { generateSecureKey,verifySecureKey } from './tools/secureKey';
@@ -68,6 +68,7 @@ export default class GTDPlugin extends Plugin {
 			
 			// 监听timeline内容更新事件
 			el.addEventListener('timeline-content-updated', (event: CustomEvent) => {
+				console.log('Received timeline-content-updated event:', event.detail);
 				this.handleTimelineContentUpdate(event.detail, ctx);
 			});
 			
@@ -126,6 +127,8 @@ export default class GTDPlugin extends Plugin {
 	 * 处理timeline内容更新
 	 */
 	async handleTimelineContentUpdate(detail: { oldContent: string; newContent: string; oldLine: string; newLine: string }, ctx: MarkdownPostProcessorContext) {
+		console.log('handleTimelineContentUpdate called:', { detail, sourcePath: ctx?.sourcePath });
+		
 		try {
 			// 尝试从上下文中获取文件路径
 			const sourcePath = ctx?.sourcePath;
@@ -145,6 +148,28 @@ export default class GTDPlugin extends Plugin {
 			if (updatedFileContent !== fileContent) {
 				// 写回文件
 				await this.app.vault.adapter.write(sourcePath, updatedFileContent);
+				
+				// 触发编辑器刷新以显示更新后的内容
+				const file = this.app.vault.getAbstractFileByPath(sourcePath);
+				if (file) {
+					// 方法1：触发文件修改事件，让 Obsidian 知道文件已更改
+					this.app.vault.trigger('modify', file);
+					
+					// 方法2：如果文件当前在编辑器中打开，尝试刷新视图
+					const activeView = this.app.workspace.getActiveViewOfType(MarkdownView);
+					if (activeView && activeView.file?.path === sourcePath) {
+						// 延迟一点再刷新，确保文件写入完成
+						setTimeout(async () => {
+							try {
+								await activeView.save();
+								await activeView.load();
+							} catch (e) {
+								console.log('Editor refresh failed:', e);
+							}
+						}, 50);
+					}
+				}
+				
 				new Notice(`任务已更新并保存: ${detail.oldLine} → ${detail.newLine}`);
 			} else {
 				new Notice(`任务已更新但文件内容未改变: ${detail.oldLine} → ${detail.newLine}`);

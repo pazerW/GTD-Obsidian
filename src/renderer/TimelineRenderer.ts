@@ -372,33 +372,34 @@ export class TimelineRenderer extends MarkdownRenderChild {
         
         const taskName = taskContent.createDiv('timeline-task-name');
         // 当重叠任务超过3个时，限制任务名称显示为两行
-        if (groupSize > 2) {
+        if (groupSize > 2 || (typeof task.duration === 'number' && task.duration <= 25)) {
             taskName.addClass('two-line-limit');
         }
         taskName.setText(task.name);
-        
-        // 时间范围显示（包含持续时间）
-        if (task.startTime && task.endTime) {
-            const timeRange = taskContent.createDiv('timeline-task-time-range');
-            const timeRangeText = `${TimeParser.formatTime(task.startTime)}-${TimeParser.formatTime(task.endTime)}`;
-            // 如果有持续时间，添加到时间范围后面
-            if (task.duration) {
+        if (groupSize < 4 && typeof task.duration === 'number' && task.duration > 25) {
+            // 时间范围显示（包含持续时间）
+            if (task.startTime && task.endTime) {
+                const timeRange = taskContent.createDiv('timeline-task-time-range');
+                const timeRangeText = `${TimeParser.formatTime(task.startTime)}-${TimeParser.formatTime(task.endTime)}`;
+                // 如果有持续时间，添加到时间范围后面
+                if (task.duration) {
+                    if (groupSize > 2) {
+                        timeRange.setText(`${timeRangeText}`);
+                    } else {
+                        timeRange.setText(`${timeRangeText} (${TimeParser.formatDuration(task.duration)})`);
+                    }
+                } else {
+                    timeRange.setText(timeRangeText);
+                }
+            } else if (task.startTime && task.duration) {
+                const endTime = new Date(task.startTime.getTime() + task.duration * 60 * 1000);
+                const timeRange = taskContent.createDiv('timeline-task-time-range');
+                const timeRangeText = `${TimeParser.formatTime(task.startTime)}-${TimeParser.formatTime(endTime)}`;
                 if (groupSize > 2) {
                     timeRange.setText(`${timeRangeText}`);
                 } else {
                     timeRange.setText(`${timeRangeText} (${TimeParser.formatDuration(task.duration)})`);
                 }
-            } else {
-                timeRange.setText(timeRangeText);
-            }
-        } else if (task.startTime && task.duration) {
-            const endTime = new Date(task.startTime.getTime() + task.duration * 60 * 1000);
-            const timeRange = taskContent.createDiv('timeline-task-time-range');
-            const timeRangeText = `${TimeParser.formatTime(task.startTime)}-${TimeParser.formatTime(endTime)}`;
-            if (groupSize > 2) {
-                timeRange.setText(`${timeRangeText}`);
-            } else {
-                timeRange.setText(`${timeRangeText} (${TimeParser.formatDuration(task.duration)})`);
             }
         }
 

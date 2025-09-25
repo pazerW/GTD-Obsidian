@@ -328,7 +328,7 @@ If your plugin does not need CSS, delete this file.
     font-size: 13px;
     color: var(--text-normal);
     line-height: 1.3;
-    margin-bottom: 4px;
+    margin-bottom: 0px;
     font-weight: 500;
     background: var(--background-secondary);
     padding: 4px 8px;
@@ -343,7 +343,7 @@ If your plugin does not need CSS, delete this file.
 /* 限制任务名称为两行显示 */
 .timeline-task-vertical-whole .timeline-task-name.two-line-limit {
     display: -webkit-box;
-    font-size: 13px;
+    font-size: 11px;
     -webkit-line-clamp: 3;
     line-clamp: 3;
     -webkit-box-orient: vertical;

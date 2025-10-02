@@ -23,7 +23,7 @@ const DEFAULT_SETTINGS: GTDPluginSettings = {
 	enableTimelineDragging: true,
 }
 
-const PLUGIN_VERSION = '1.1.0.6';
+const PLUGIN_VERSION = '1.1.1';
 const PLUGIN_NAME = 'GTD-Obsidian';
 const TODAY_TAG = 'Today';
 
@@ -34,9 +34,7 @@ export default class GTDPlugin extends Plugin {
 
 	async onload() {
 		await this.loadSettings();
-		// ...existing onload code...
 		this.startHttpServer(3001);
-		// This creates an icon in the left ribbon.
 		const ribbonIconEl = this.addRibbonIcon('ship-wheel', '同步今日任务', (evt: MouseEvent) => {
 			this.handleRibbonClick();
 		});
@@ -127,14 +125,12 @@ export default class GTDPlugin extends Plugin {
 	 * 处理timeline内容更新
 	 */
 	async handleTimelineContentUpdate(detail: { oldContent: string; newContent: string; oldLine: string; newLine: string }, ctx: MarkdownPostProcessorContext) {
-		console.log('handleTimelineContentUpdate called:', { detail, sourcePath: ctx?.sourcePath });
 		
 		try {
 			// 尝试从上下文中获取文件路径
 			const sourcePath = ctx?.sourcePath;
 			
 			if (!sourcePath) {
-				console.warn('No source path found in context');
 				new Notice(`任务已更新但无法保存到文件: ${detail.oldLine} → ${detail.newLine}`);
 				return;
 			}
@@ -144,7 +140,7 @@ export default class GTDPlugin extends Plugin {
 			
 			// 在文件内容中查找并替换timeline代码块中的对应行
 			const updatedFileContent = this.updateTimelineContentInFile(fileContent, detail.oldLine, detail.newLine);
-			
+
 			if (updatedFileContent !== fileContent) {
 				// 写回文件
 				await this.app.vault.adapter.write(sourcePath, updatedFileContent);
@@ -169,10 +165,6 @@ export default class GTDPlugin extends Plugin {
 						}, 50);
 					}
 				}
-				
-				new Notice(`任务已更新并保存: ${detail.oldLine} → ${detail.newLine}`);
-			} else {
-				new Notice(`任务已更新但文件内容未改变: ${detail.oldLine} → ${detail.newLine}`);
 			}
 			
 		} catch (error) {

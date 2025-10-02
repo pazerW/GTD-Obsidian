@@ -1278,22 +1278,43 @@ export class TimelineRenderer extends MarkdownRenderChild {
         this.currentTimeIndicator.style.top = `${position}px`;
         this.currentTimeIndicator.style.left = '0';
         this.currentTimeIndicator.style.right = '0';
-        this.currentTimeIndicator.style.height = '2px';
+        this.currentTimeIndicator.style.height = '3px';
         this.currentTimeIndicator.style.backgroundColor = '#ff4444';
-        this.currentTimeIndicator.style.zIndex = '100';
+        this.currentTimeIndicator.style.boxShadow = '0 0 8px rgba(255, 68, 68, 0.6)';
+        this.currentTimeIndicator.style.zIndex = '9999';
         this.currentTimeIndicator.style.pointerEvents = 'none';
+        this.currentTimeIndicator.style.borderRadius = '1px';
+        this.currentTimeIndicator.style.transition = 'top 0.5s ease-in-out';
         
-        // 添加时间标签
+        // // 添加一个小圆点在左侧
+        // const dot = this.currentTimeIndicator.createDiv('current-time-dot');
+        // dot.style.position = 'absolute';
+        // dot.style.left = '-4px';
+        // dot.style.top = '-3px';
+        // dot.style.width = '8px';
+        // dot.style.height = '8px';
+        // dot.style.backgroundColor = '#ff4444';
+        // dot.style.borderRadius = '50%';
+        // dot.style.border = '2px solid var(--background-primary)';
+        // dot.style.boxShadow = '0 0 6px rgba(255, 68, 68, 0.8)';
+        // dot.style.zIndex = '10001';
+        
+        // 添加时间标签（显示在左侧）
         const timeLabel = this.currentTimeIndicator.createSpan('current-time-label');
         timeLabel.setText(`现在 ${TimeParser.formatTime(now)}`);
         timeLabel.style.position = 'absolute';
-        timeLabel.style.right = '10px';
-        timeLabel.style.top = '-10px';
-        timeLabel.style.fontSize = '12px';
+        timeLabel.style.left = '15px';
+        timeLabel.style.top = '-12px';
+        timeLabel.style.fontSize = '11px';
+        timeLabel.style.fontWeight = 'bold';
         timeLabel.style.color = '#ff4444';
         timeLabel.style.backgroundColor = 'var(--background-primary)';
-        timeLabel.style.padding = '2px 6px';
-        timeLabel.style.borderRadius = '3px';
+        timeLabel.style.padding = '3px 8px';
+        timeLabel.style.borderRadius = '12px';
+        timeLabel.style.border = '1px solid #ff4444';
+        timeLabel.style.boxShadow = '0 2px 4px rgba(0, 0, 0, 0.1)';
+        timeLabel.style.whiteSpace = 'nowrap';
+        timeLabel.style.zIndex = '10000';
         
         // 启动定时更新
         this.startTimelineUpdates();
@@ -1308,18 +1329,23 @@ export class TimelineRenderer extends MarkdownRenderChild {
         const startTime = timeSlots[0];
         const endTime = timeSlots[timeSlots.length - 1];
         
-        // 如果时间不在范围内，返回-1
-        if (time < startTime || time > endTime) return -1;
+        // 扩展显示范围，允许当前时间在开始时间之前30分钟或结束时间之后30分钟内显示
+        const extendedStartTime = new Date(startTime.getTime() - 30 * 60 * 1000);
+        const extendedEndTime = new Date(endTime.getTime() + 30 * 60 * 1000);
         
-        // 计算相对位置
-        const totalMinutes = (endTime.getTime() - startTime.getTime()) / (1000 * 60);
+        // 如果时间不在扩展范围内，返回-1
+        if (time < extendedStartTime || time > extendedEndTime) return -1;
+        
+        // 计算当前时间相对于开始时间的分钟数
         const currentMinutes = (time.getTime() - startTime.getTime()) / (1000 * 60);
         
-        // 假设每个时间槽高度为60px
+        // 每个时间槽高度为60px
         const slotHeight = 60;
-        const totalHeight = timeSlots.length * slotHeight;
+        const intervalMinutes = this.options.intervalMinutes;
+        const pixelsPerMinute = slotHeight / intervalMinutes;
         
-        return (currentMinutes / totalMinutes) * totalHeight;
+        // 更精确的位置计算
+        return currentMinutes * pixelsPerMinute;
     }
 
     /**
@@ -1331,10 +1357,13 @@ export class TimelineRenderer extends MarkdownRenderChild {
             window.clearInterval(this.updateTimer);
         }
         
-        // 每分钟更新一次
+        // 每30秒更新一次，让红线移动更加平滑
         this.updateTimer = window.setInterval(() => {
             this.updateCurrentTimeIndicator();
-        }, 60000); // 60秒
+        }, 30000); // 30秒
+        
+        // 立即执行一次更新
+        this.updateCurrentTimeIndicator();
     }
 
     /**

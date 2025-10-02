@@ -15,6 +15,7 @@ interface ParsedTask {
     duration?: number;
     dueTime?: Date;
     originalLine: string;
+    id: string; // 唯一标识符
 }
 
 /**
@@ -164,7 +165,8 @@ export class TimelineRenderer extends MarkdownRenderChild {
                     endTime,
                     duration,
                     dueTime,
-                    originalLine: trimmedLine
+                    originalLine: trimmedLine,
+                    id: trimmedLine.match(/#([a-zA-Z0-9]+)/)?.[1] || `task-${tasks.length}-${Date.now()}`
                 });
             }
         }
@@ -432,73 +434,6 @@ export class TimelineRenderer extends MarkdownRenderChild {
     }
 
     /**
-     * 创建竖向任务元素（保留用于兼容性）
-     */
-    private createVerticalTask(container: HTMLElement, task: ParsedTask, segment: 'start' | 'middle' | 'end' | 'single' = 'single'): void {
-        const taskElement = container.createDiv('timeline-task-vertical');
-        taskElement.addClass(task.completed ? 'completed' : 'pending');
-        
-        // 创建任务点
-        const taskDot = taskElement.createDiv('timeline-task-dot');
-        
-        // 为所有任务添加点击切换完成状态功能
-        taskDot.addClass('clickable-toggle');
-        taskDot.addEventListener('click', (event) => {
-            event.preventDefault();
-            event.stopPropagation();
-            this.toggleTaskCompletion(task);
-        });
-        
-        // 根据任务状态设置不同的提示文本
-        if (task.completed) {
-            taskDot.title = '点击标记为未完成';
-        } else {
-            taskDot.title = '点击标记为完成';
-        }
-        
-        // 创建任务内容
-        const taskContent = taskElement.createDiv('timeline-task-content');
-        
-        const taskName = taskContent.createDiv('timeline-task-name');
-        taskName.setText(task.name);
-        
-        // 时间范围显示（包含持续时间）
-        if (task.startTime && task.endTime) {
-            const timeRange = taskContent.createDiv('timeline-task-time-range');
-            const timeRangeText = `${TimeParser.formatTime(task.startTime)} - ${TimeParser.formatTime(task.endTime)}`;
-            // 如果有持续时间，添加到时间范围后面
-            if (task.duration) {
-                timeRange.setText(`${timeRangeText} (${TimeParser.formatDuration(task.duration)})`);
-            } else {
-                timeRange.setText(timeRangeText);
-            }
-        } else if (task.startTime && task.duration) {
-            const endTime = new Date(task.startTime.getTime() + task.duration * 60 * 1000);
-            const timeRange = taskContent.createDiv('timeline-task-time-range');
-            const timeRangeText = `${TimeParser.formatTime(task.startTime)} - ${TimeParser.formatTime(endTime)}`;
-            timeRange.setText(`${timeRangeText} (${TimeParser.formatDuration(task.duration)})`);
-        }
-        
-        // 截止时间标签
-        if (task.dueTime && task.startTime && task.dueTime !== task.startTime) {
-            const dueLabel = taskContent.createDiv('timeline-task-due');
-            dueLabel.setText(`截止: ${TimeParser.formatTime(task.dueTime)}`);
-        }
-        
-        // 添加时间状态样式
-        const taskTime = task.startTime || task.dueTime;
-        if (taskTime) {
-            const timeStatus = TimeParser.getTimeStatus(taskTime);
-            taskElement.addClass(`time-${timeStatus}`);
-        }
-        
-        // 添加拖拽功能
-        if (this.options.enableDragging) {
-            this.addDragFunctionality(taskElement, task);
-        }
-    }
-
-    /**
      * 创建无时间任务
      */
     private createNoTimeTask(container: HTMLElement, task: ParsedTask): void {
@@ -720,58 +655,6 @@ export class TimelineRenderer extends MarkdownRenderChild {
     }
 
     /**
-     * 获取指定时间段的任务（简化版，用于兼容性）
-     */
-    private getTasksForTimeSlot(tasks: ParsedTask[], slot: Date): ParsedTask[] {
-        const nextSlotTime = new Date(slot.getTime() + this.options.intervalMinutes * 60 * 1000);
-        
-        return tasks.filter(task => {
-            const taskTime = task.startTime || task.dueTime;
-            if (!taskTime) return false;
-            
-            return taskTime >= slot && taskTime < nextSlotTime;
-        });
-    }
-
-    /**
-     * 计算任务在横向时间轴中的位置和宽度
-     */
-    private calculateTaskPositionAndWidth(task: ParsedTask, timeSlots: Date[]): { left: number, width: number } {
-        const startSlot = timeSlots[0];
-        const endSlot = timeSlots[timeSlots.length - 1];
-        const totalDuration = endSlot.getTime() - startSlot.getTime();
-        
-        // 确定任务的开始时间
-        const taskStartTime = task.startTime || task.dueTime;
-        if (!taskStartTime) {
-            return { left: 0, width: (1 / (timeSlots.length - 1)) * 100 };
-        }
-        
-        // 计算任务开始位置
-        const taskStartOffset = taskStartTime.getTime() - startSlot.getTime();
-        const leftPosition = Math.max(0, Math.min(100, (taskStartOffset / totalDuration) * 100));
-        
-        // 计算任务宽度
-        let taskWidth: number;
-        
-        if (task.endTime) {
-            // 如果有结束时间，使用结束时间计算宽度
-            const taskEndOffset = task.endTime.getTime() - startSlot.getTime();
-            const rightPosition = Math.max(0, Math.min(100, (taskEndOffset / totalDuration) * 100));
-            taskWidth = Math.max(1, rightPosition - leftPosition); // 最小宽度为1%
-        } else if (task.duration) {
-            // 如果有持续时间，使用持续时间计算宽度
-            const taskDuration = task.duration * 60 * 1000; // 转换为毫秒
-            taskWidth = Math.min(100 - leftPosition, (taskDuration / totalDuration) * 100);
-        } else {
-            // 默认宽度为一个时间间隔
-            taskWidth = (1 / (timeSlots.length - 1)) * 100;
-        }
-        
-        return { left: leftPosition, width: Math.max(1, taskWidth) };
-    }
-
-    /**
      * 计算竖向任务在时间轴中的位置和高度，基于实际可见的时间槽
      */
     private calculateVerticalTaskPosition(startTime: Date, endTime: Date, timeSlots: Date[], container?: HTMLElement): { top: number, height: number } | null {
@@ -896,42 +779,6 @@ export class TimelineRenderer extends MarkdownRenderChild {
         };
     }
 
-    /**
-     * 计算竖向任务的高度（根据持续时间和片段类型）
-     */
-    private calculateVerticalTaskHeight(task: ParsedTask, segment: 'start' | 'middle' | 'end' | 'single' = 'single'): number {
-        // 基础高度
-        const baseHeight = 40;
-        
-        // 对于跨时间段的任务，每个片段都应该填满当前时间段
-        if (segment !== 'single') {
-            // 跨时间段任务的每个片段填满整个时间槽（减去一些边距）
-            const slotHeight = this.options.intervalMinutes * 1.5; // 每分钟1.5px
-            return Math.max(baseHeight, Math.min(150, slotHeight));
-        }
-        
-        // 对于单个时间段内的任务，按原有逻辑计算
-        if (task.duration && task.duration > 0) {
-            // 每分钟对应的像素高度
-            const pixelsPerMinute = 1.5;
-            const durationHeight = task.duration * pixelsPerMinute;
-            
-            // 最小高度40px，最大高度200px
-            return Math.max(baseHeight, Math.min(200, durationHeight));
-        }
-        
-        // 如果有开始和结束时间，计算时间差
-        if (task.startTime && task.endTime) {
-            const durationMinutes = (task.endTime.getTime() - task.startTime.getTime()) / (1000 * 60);
-            const pixelsPerMinute = 1.5;
-            const durationHeight = durationMinutes * pixelsPerMinute;
-            
-            return Math.max(baseHeight, Math.min(200, durationHeight));
-        }
-        
-        // 默认返回0，使用CSS的默认高度
-        return 0;
-    }
 
     /**
      * 添加拖拽功能
@@ -947,37 +794,8 @@ export class TimelineRenderer extends MarkdownRenderChild {
         };
         
         this.dragHandler.addDragToTask(element, dragData);
-        
-        // 垂直布局不支持调整大小功能
     }
 
-
-    /**
-     * 计算当前时间在时间轴中的位置
-     */
-    private calculateCurrentTimePosition(currentTime: Date, timeSlots: Date[]): { position: number } | null {
-        if (timeSlots.length === 0) return null;
-        
-        const firstSlot = timeSlots[0];
-        const lastSlot = timeSlots[timeSlots.length - 1];
-        
-        // 检查当前时间是否在时间轴范围内
-        const slotDuration = this.options.intervalMinutes * 60 * 1000; // 转换为毫秒
-        const timelineEnd = new Date(lastSlot.getTime() + slotDuration);
-        
-        if (currentTime < firstSlot || currentTime > timelineEnd) {
-            return null; // 当前时间不在时间轴范围内
-        }
-        
-        // 竖向时间轴：计算从顶部的像素距离
-        const slotHeight = 60; // 每个时间槽的高度（像素）
-        const timeOffset = currentTime.getTime() - firstSlot.getTime();
-        const totalDuration = timelineEnd.getTime() - firstSlot.getTime();
-        const totalHeight = timeSlots.length * slotHeight;
-        
-        const position = (timeOffset / totalDuration) * totalHeight;
-        return { position: Math.max(0, position) };
-    }
 
     /**
      * 计算重叠任务的布局
@@ -1079,8 +897,6 @@ export class TimelineRenderer extends MarkdownRenderChild {
      * 处理任务更新
      */
     private handleTaskUpdate(oldLine: string, newLine: string): void {
-        console.log('TimelineRenderer.handleTaskUpdate called:', { oldLine, newLine });
-        
         if (!this.currentContent) {
             console.warn('No current content available');
             return;
@@ -1089,28 +905,9 @@ export class TimelineRenderer extends MarkdownRenderChild {
         // 保存原始内容
         const oldContent = this.currentContent;
         
-        // 检查 oldLine 是否在 currentContent 中存在
-        const lineExists = this.currentContent.includes(oldLine);
-        console.log('Does oldLine exist in currentContent?', lineExists);
-        
-        if (!lineExists) {
-            console.warn('oldLine not found in currentContent. Searching for similar lines...');
-            const lines = this.currentContent.split('\n');
-            lines.forEach((line, index) => {
-                if (line.includes('建身&&跑步') || line.includes('#jhFv9AJqnNX.235.37')) {
-                    console.log(`Similar line found at ${index}:`, line);
-                }
-            });
-        }
-        
         // 更新内容中的任务行
         const updatedContent = this.currentContent.replace(oldLine, newLine);
-        
-        console.log('Replace operation result:', {
-            contentChanged: updatedContent !== oldContent,
-            oldContentLength: oldContent.length,
-            newContentLength: updatedContent.length
-        });
+
         
         // 保存更新后的内容
         this.currentContent = updatedContent;
@@ -1121,10 +918,8 @@ export class TimelineRenderer extends MarkdownRenderChild {
         // 重新渲染以反映更改
         this.render(updatedContent);
         
-        console.log('Timeline fully re-rendered after task update');
         
         // 触发内容更新事件（如果需要保存到文件）
-        console.log('Dispatching timeline-content-updated event');
         this.containerEl.dispatchEvent(new CustomEvent('timeline-content-updated', {
             detail: { oldContent, newContent: updatedContent, oldLine, newLine }
         }));
@@ -1285,19 +1080,6 @@ export class TimelineRenderer extends MarkdownRenderChild {
         this.currentTimeIndicator.style.pointerEvents = 'none';
         this.currentTimeIndicator.style.borderRadius = '1px';
         this.currentTimeIndicator.style.transition = 'top 0.5s ease-in-out';
-        
-        // // 添加一个小圆点在左侧
-        // const dot = this.currentTimeIndicator.createDiv('current-time-dot');
-        // dot.style.position = 'absolute';
-        // dot.style.left = '-4px';
-        // dot.style.top = '-3px';
-        // dot.style.width = '8px';
-        // dot.style.height = '8px';
-        // dot.style.backgroundColor = '#ff4444';
-        // dot.style.borderRadius = '50%';
-        // dot.style.border = '2px solid var(--background-primary)';
-        // dot.style.boxShadow = '0 0 6px rgba(255, 68, 68, 0.8)';
-        // dot.style.zIndex = '10001';
         
         // 添加时间标签（显示在左侧）
         const timeLabel = this.currentTimeIndicator.createSpan('current-time-label');

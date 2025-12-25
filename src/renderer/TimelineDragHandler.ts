@@ -26,7 +26,6 @@ export class TimelineDragHandler {
         this.container = container;
         this.intervalMinutes = intervalMinutes;
         this.onTaskUpdate = onTaskUpdate;
-        this.setupDropZones();
     }
 
     /**
@@ -57,9 +56,13 @@ export class TimelineDragHandler {
     setupDropZones(): void {
         // 为时间槽添加拖拽目标功能
         const timeSlots = this.container.querySelectorAll('.timeline-time-slot, .timeline-slot');
-        
+
         timeSlots.forEach(slot => {
-            this.addDropZoneEvents(slot as HTMLElement);
+            const el = slot as HTMLElement;
+            // 防止重复初始化同一元素
+            if (el.getAttribute('data-dropzone-initialized') === 'true') return;
+            this.addDropZoneEvents(el);
+            el.setAttribute('data-dropzone-initialized', 'true');
         });
     }
 
@@ -103,6 +106,27 @@ export class TimelineDragHandler {
                 console.error('Failed to handle task drop:', error);
             }
         });
+    }
+
+    /**
+     * 更新容器引用（当 renderer 复用 handler 时调用）
+     */
+    setContainer(container: HTMLElement) {
+        this.container = container;
+    }
+
+    /**
+     * 更新时间间隔
+     */
+    setIntervalMinutes(minutes: number) {
+        this.intervalMinutes = minutes;
+    }
+
+    /**
+     * 清理高亮（以及在 renderer 卸载时可调用以确保 UI 清理）
+     */
+    dispose(): void {
+        this.clearDropZoneHighlights();
     }
 
     /**

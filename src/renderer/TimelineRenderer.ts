@@ -47,7 +47,7 @@ export class TimelineRenderer extends MarkdownRenderChild {
         this.app = app;
         this.options = {
             layout: 'vertical',
-            intervalMinutes: 30,
+            intervalMinutes: 60,
             showTimeSlots: true,
             enableDragging: false,
             dynamicTimeSlots: true, // 默认启用动态时间段
@@ -97,14 +97,26 @@ export class TimelineRenderer extends MarkdownRenderChild {
             await this.createVerticalTimeline(timelineContainer, sortedTasks);
             
             // 初始化拖拽功能
+            // 初始化或复用拖拽功能（避免重复 new + 重复注册事件）
             if (this.options.enableDragging) {
-                this.dragHandler = new TimelineDragHandler(
-                    timelineContainer,
-                    this.options.intervalMinutes,
-                    (oldLine, newLine) => this.handleTaskUpdate(oldLine, newLine)
-                );
-                // 设置拖拽目标区域
+                if (!this.dragHandler) {
+                    this.dragHandler = new TimelineDragHandler(
+                        timelineContainer,
+                        this.options.intervalMinutes,
+                        (oldLine, newLine) => this.handleTaskUpdate(oldLine, newLine)
+                    );
+                } else {
+                    // 复用已有 handler，更新容器引用和间隔设置
+                    this.dragHandler.setContainer(timelineContainer);
+                    this.dragHandler.setIntervalMinutes(this.options.intervalMinutes);
+                }
+                // idempotent：只会在未初始化的元素上绑定事件
                 this.dragHandler.setupDropZones();
+            } else {
+                // 未启用拖拽时，若已有 handler 可做简单清理
+                if (this.dragHandler) {
+                    this.dragHandler.dispose();
+                }
             }
             
             // 确保容器有正确的类名
@@ -801,95 +813,108 @@ export class TimelineRenderer extends MarkdownRenderChild {
      * 计算重叠任务的布局
      */
     private calculateOverlapLayout(tasks: ParsedTask[]): { task: ParsedTask, offset: number, width: number, groupSize: number }[] {
-        // 为每个任务计算时间范围
-        const taskRanges = tasks.map(task => {
-            const startTime = task.startTime || task.dueTime;
-            if (!startTime) return null;
-            
-            let endTime: Date;
-            if (task.endTime) {
-                endTime = task.endTime;
-            } else if (task.duration && task.duration > 0) {
-                endTime = new Date(startTime.getTime() + task.duration * 60 * 1000);
-            } else {
-                endTime = new Date(startTime.getTime() + 30 * 60 * 1000); // 默认30分钟
-            }
-            
-            return {
-                task,
-                startTime,
-                endTime,
-                startMs: startTime.getTime(),
-                endMs: endTime.getTime()
-            };
-        }).filter(Boolean) as Array<{
-            task: ParsedTask;
-            startTime: Date;
-            endTime: Date;
-            startMs: number;
-            endMs: number;
-        }>;
-        
+        // 使用分组+扫描线（列分配）算法以降低复杂度
+        const taskRanges = tasks
+            .map(task => {
+                const startTime = task.startTime || task.dueTime;
+                if (!startTime) return null;
+
+                let endTime: Date;
+                if (task.endTime) {
+                    endTime = task.endTime;
+                } else if (task.duration && task.duration > 0) {
+                    endTime = new Date(startTime.getTime() + task.duration * 60 * 1000);
+                } else {
+                    endTime = new Date(startTime.getTime() + 30 * 60 * 1000);
+                }
+
+                return {
+                    task,
+                    startTime,
+                    endTime,
+                    startMs: startTime.getTime(),
+                    endMs: endTime.getTime(),
+                };
+            })
+            .filter(Boolean) as Array<{
+                task: ParsedTask;
+                startTime: Date;
+                endTime: Date;
+                startMs: number;
+                endMs: number;
+            }>;
+
+        if (taskRanges.length === 0) return [];
+
         // 按开始时间排序
         taskRanges.sort((a, b) => a.startMs - b.startMs);
-        
-        // 寻找重叠组并计算每组的布局
-        const result: { task: ParsedTask, offset: number, width: number, groupSize: number }[] = [];
-        const processedTasks = new Set<ParsedTask>();
-        
-        for (let i = 0; i < taskRanges.length; i++) {
-            const currentTask = taskRanges[i];
-            
-            if (processedTasks.has(currentTask.task)) {
-                continue; // 已经处理过的任务跳过
+
+        const result: { task: ParsedTask; offset: number; width: number; groupSize: number }[] = [];
+
+        // 将重叠的任务划分为若干组（相互重叠或相邻视为一组）
+        const groups: Array<typeof taskRanges> = [];
+        let currentGroup: typeof taskRanges = [];
+        let currentGroupEnd = -Infinity;
+
+        for (const tr of taskRanges) {
+            if (tr.startMs <= currentGroupEnd) {
+                currentGroup.push(tr);
+                currentGroupEnd = Math.max(currentGroupEnd, tr.endMs);
+            } else {
+                if (currentGroup.length > 0) groups.push(currentGroup);
+                currentGroup = [tr];
+                currentGroupEnd = tr.endMs;
             }
-            
-            // 找到与当前任务重叠的所有任务组成一个组
-            const overlapGroup = [currentTask];
-            processedTasks.add(currentTask.task);
-            
-            for (let j = i + 1; j < taskRanges.length; j++) {
-                const otherTask = taskRanges[j];
-                
-                if (processedTasks.has(otherTask.task)) {
-                    continue;
+        }
+        if (currentGroup.length > 0) groups.push(currentGroup);
+
+        const baseWidth = 100;
+
+        // 对每个组使用贪心列分配（first-fit）为每个任务分配列
+        for (const group of groups) {
+            // 按开始时间排序（组内已近似排序，但确保稳定）
+            group.sort((a, b) => a.startMs - b.startMs);
+
+            const columnEndTimes: number[] = []; // 每列的当前结束时间
+            const assignments: Map<ParsedTask, number> = new Map();
+
+            for (const tr of group) {
+                // 找到第一个可复用的列
+                let assignedCol = -1;
+                for (let c = 0; c < columnEndTimes.length; c++) {
+                    if (tr.startMs >= columnEndTimes[c]) {
+                        assignedCol = c;
+                        columnEndTimes[c] = tr.endMs;
+                        break;
+                    }
                 }
-                
-                // 检查是否与组中任何任务重叠
-                const hasOverlap = overlapGroup.some(groupTask => 
-                    otherTask.startMs < groupTask.endMs && otherTask.endMs > groupTask.startMs
-                );
-                
-                if (hasOverlap) {
-                    overlapGroup.push(otherTask);
-                    processedTasks.add(otherTask.task);
+
+                if (assignedCol === -1) {
+                    assignedCol = columnEndTimes.length;
+                    columnEndTimes.push(tr.endMs);
                 }
+
+                assignments.set(tr.task, assignedCol);
             }
-            
-            // 为这个重叠组计算从左到右的布局 - 使用200%基础宽度
-            const groupSize = overlapGroup.length;
-            const baseWidth = 100; // 基础宽度200%
-            let taskWidth = Math.max(baseWidth / groupSize, 50); // 每个任务的宽度，最小50%
-            
-            // 特殊处理：超过3个任务时缩小50%
-            if (groupSize === 3) {
-                taskWidth = taskWidth * 0.68; // 缩小50%
-            }else if (groupSize > 3) {
-                taskWidth = taskWidth * 0.5; // 缩小50%
-            }
-            
-            overlapGroup.forEach((taskRange, index) => {
-                const offsetPercentage = (baseWidth / groupSize) * index;
-                
+
+            const groupSize = Math.max(1, columnEndTimes.length);
+            let taskWidth = Math.max(baseWidth / groupSize, 50);
+            if (groupSize === 3) taskWidth = taskWidth * 0.68;
+            else if (groupSize > 3) taskWidth = taskWidth * 0.5;
+
+            // 生成结果（offset 为百分比）
+            for (const tr of group) {
+                const col = assignments.get(tr.task) ?? 0;
+                const offsetPercentage = (baseWidth / groupSize) * col;
                 result.push({
-                    task: taskRange.task,
+                    task: tr.task,
                     offset: offsetPercentage,
                     width: taskWidth,
-                    groupSize: groupSize
+                    groupSize,
                 });
-            });
+            }
         }
-        
+
         return result;
     }
 
@@ -1142,7 +1167,7 @@ export class TimelineRenderer extends MarkdownRenderChild {
         // 每30秒更新一次，让红线移动更加平滑
         this.updateTimer = window.setInterval(() => {
             this.updateCurrentTimeIndicator();
-        }, 30000); // 30秒
+        }, 60000); // 60秒
         
         // 立即执行一次更新
         this.updateCurrentTimeIndicator();

@@ -337,27 +337,28 @@ export default class GTDPlugin extends Plugin {
 			lines.push(...weekGoals);
 		}
 		if(timeLineTasks.length>0){
+			lines.push(`## TODO \n## TODO \n`);
 			lines.push(`\`\`\`timeline`);
 			lines.push(...timeLineString);
 			lines.push(`\`\`\``);
 		}
 		if (ongoingTodayLines.length > 0) {
 			const filteredOngoingTodayLines = ongoingTodayLines;
-			lines.push(`\n## 今日重点 - ${filteredOngoingTodayLines.length} 个\n`);
+			lines.push(`\n### 今日重点 - ${filteredOngoingTodayLines.length} 个\n`);
 			lines.push(...filteredOngoingTodayLines);
 		}
 
 		if (ongoingLines.length > 0) {
 
 			const filteredOngoingLines = ongoingLines;
-			lines.push(`\n## 今日任务 - ${filteredOngoingLines.length} 个\n`);
+			lines.push(`\n### 今日任务 - ${filteredOngoingLines.length} 个\n`);
 			lines.push(...filteredOngoingLines);
 		}
 		if (completedLines.length > 0) {
-			lines.push(`\n## 已完成任务 - ${completedLines.length} 个\n`);
+			lines.push(`\n### 已完成任务 - ${completedLines.length} 个\n`);
 			lines.push(...completedLines);
 		}
-		lines.push(`\n## 已丢弃任务 - ${droppedLines.length} 个\n`);
+		lines.push(`\n### 已丢弃任务 - ${droppedLines.length} 个\n`);
 		if (droppedLines.length > 0) lines.push(...droppedLines);
 		lines.push('\n');
 		// 将tasks 换分为三类，已完成，进行中，已丢弃
